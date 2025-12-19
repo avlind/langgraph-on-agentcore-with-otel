@@ -103,6 +103,11 @@ aws sts get-caller-identity
 
 The `deploy.sh` script is **required** for deployment because it injects runtime environment variables into the generated Dockerfile. Without this step, the agent would use hardcoded defaults instead of your `.env` configuration.
 
+> **Important:** Make sure your virtual environment is activated before running the scripts:
+> ```bash
+> source .venv/bin/activate
+> ```
+
 ```bash
 # Using default credentials
 ./deploy.sh
@@ -407,6 +412,14 @@ Use the cleanup script to destroy AWS resources:
 > **Tip:** For iterative development, use `./destroy.sh` without flags. This preserves your secret and ECR repo, making redeployment faster since these don't need to be recreated.
 
 ## Troubleshooting
+
+### "agentcore command not found"
+
+The virtual environment is not activated. Run:
+
+```bash
+source .venv/bin/activate
+```
 
 ### Agent fails to start with "TAVILY_API_KEY not found"
 

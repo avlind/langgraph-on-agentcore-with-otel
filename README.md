@@ -118,6 +118,18 @@ AWS_PROFILE=YourProfileName agentcore configure \
   --non-interactive
 ```
 
+**Arguments explained:**
+
+| Flag | Description |
+|------|-------------|
+| `-e, --entrypoint` | The Python file containing your agent code and the `@app.entrypoint` decorator |
+| `-n, --name` | Unique name for your agent (used in ARNs, ECR repo names, and CloudWatch logs) |
+| `-dt, --deployment-type` | Either `container` or `direct_code_deploy`. Use `container` for proper OpenTelemetry instrumentation—this wraps your code with `opentelemetry-instrument` in the Dockerfile |
+| `-r, --region` | AWS region to deploy to (must have Bedrock AgentCore available) |
+| `--non-interactive` | Skip interactive prompts; use defaults for unspecified options (useful for CI/CD) |
+
+> **Why `container` mode?** The `direct_code_deploy` mode runs your Python file directly without the `opentelemetry-instrument` wrapper. Container mode generates a Dockerfile with `CMD ["opentelemetry-instrument", "python", "-m", "your_agent"]`, which auto-instruments LangChain, Bedrock, and other libraries for tracing.
+
 This creates:
 - `.bedrock_agentcore.yaml` - Agent configuration
 - `.bedrock_agentcore/` - Generated Dockerfile and build artifacts

@@ -7,11 +7,16 @@ from langchain.chat_models import init_chat_model
 # Load environment variables from .env file (for local dev)
 load_dotenv()
 
+# Configuration from environment variables (with defaults)
+AWS_REGION = os.environ.get("AWS_REGION", "us-east-2")
+SECRET_NAME = os.environ.get("SECRET_NAME", "langgraph-agent/tavily-api-key")
+MODEL_ID = os.environ.get("MODEL_ID", "global.anthropic.claude-haiku-4-5-20251001-v1:0")
+
 # If TAVILY_API_KEY not in env, try to fetch from Secrets Manager
 if not os.environ.get("TAVILY_API_KEY"):
     try:
-        client = boto3.client("secretsmanager", region_name="us-east-2")
-        secret = client.get_secret_value(SecretId="langgraph-agent/tavily-api-key")
+        client = boto3.client("secretsmanager", region_name=AWS_REGION)
+        secret = client.get_secret_value(SecretId=SECRET_NAME)
         os.environ["TAVILY_API_KEY"] = secret["SecretString"]
     except Exception:
         pass  # Will fail later if key is truly missing
@@ -22,7 +27,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 
 # Initialize the LLM with Bedrock
 llm = init_chat_model(
-    "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+    MODEL_ID,
     model_provider="bedrock_converse",
 )
 

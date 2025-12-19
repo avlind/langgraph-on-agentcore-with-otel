@@ -58,16 +58,79 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Configure Tavily API Key
+### 3. Configure Environment Variables
 
-Create a `.env` file for local development:
+Create a `.env` file from the sample:
 
 ```bash
 cp .env.sample .env
-# Edit .env and add your Tavily API key
 ```
 
-Store the API key in AWS Secrets Manager for the deployed agent:
+Edit `.env` with your configuration:
+
+```bash
+# Required - API Keys
+TAVILY_API_KEY=your-tavily-api-key-here
+
+# Deployment Configuration
+AWS_REGION=us-east-2
+AGENT_NAME=langgraph_agent_web_search
+MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0
+SECRET_NAME=langgraph-agent/tavily-api-key
+```
+
+| Variable | Description |
+|----------|-------------|
+| `TAVILY_API_KEY` | Your Tavily API key (required) |
+| `AWS_REGION` | AWS region for deployment (default: `us-east-2`) |
+| `AGENT_NAME` | Name for your agent in AgentCore |
+| `MODEL_ID` | Bedrock model ID to use |
+| `SECRET_NAME` | Name for the Secrets Manager secret |
+
+### 4. Ensure AWS Credentials are Active
+
+```bash
+# For SSO profiles
+aws sso login --profile YourProfileName
+
+# For default credentials, verify with:
+aws sts get-caller-identity
+```
+
+## Deployment
+
+### Using deploy.sh (Required)
+
+The `deploy.sh` script is **required** for deployment because it injects runtime environment variables into the generated Dockerfile. Without this step, the agent would use hardcoded defaults instead of your `.env` configuration.
+
+```bash
+# Using default credentials
+./deploy.sh
+
+# Using a named AWS profile (SSO users)
+./deploy.sh --profile YourProfileName
+```
+
+**What the script does:**
+
+| Step | Action |
+|------|--------|
+| 1/5 | **Secrets Manager** - Creates the API key secret (if it doesn't exist) |
+| 2/5 | **Configure** - Runs `agentcore configure` to generate Dockerfile |
+| 3/5 | **Inject ENV vars** - Adds `AWS_REGION`, `SECRET_NAME`, `MODEL_ID` to Dockerfile |
+| 4/5 | **Deploy** - Builds container via CodeBuild and deploys to AgentCore |
+| 5/5 | **IAM permissions** - Grants Secrets Manager access to execution role |
+
+> **Why is this necessary?** The `agentcore configure` command generates a Dockerfile, but there's no built-in way to pass custom environment variables to the runtime. The script appends `ENV` statements to the Dockerfile before deployment, ensuring your `.env` configuration is baked into the container.
+
+### Manual Deployment (Advanced)
+
+<details>
+<summary>Click to expand manual deployment steps</summary>
+
+> **Warning:** Manual deployment requires you to manually inject environment variables into the generated Dockerfile after running `agentcore configure`. If you skip this step, the agent will use hardcoded defaults instead of your configuration. **Using `deploy.sh` is strongly recommended.**
+
+#### 1. Create Secrets Manager Secret
 
 ```bash
 # Using default credentials
@@ -84,21 +147,7 @@ aws secretsmanager create-secret \
   --profile YourProfileName
 ```
 
-### 4. Ensure AWS Credentials are Active
-
-```bash
-# For SSO profiles
-aws sso login --profile YourProfileName
-
-# For default credentials, verify with:
-aws sts get-caller-identity
-```
-
-## Deployment
-
-### 1. Configure the Agent
-
-Configure for container deployment (required for full LangChain observability):
+#### 2. Configure the Agent
 
 ```bash
 # Using default credentials
@@ -130,11 +179,22 @@ AWS_PROFILE=YourProfileName agentcore configure \
 
 > **Why `container` mode?** The `direct_code_deploy` mode runs your Python file directly without the `opentelemetry-instrument` wrapper. Container mode generates a Dockerfile with `CMD ["opentelemetry-instrument", "python", "-m", "your_agent"]`, which auto-instruments LangChain, Bedrock, and other libraries for tracing.
 
-This creates:
-- `.bedrock_agentcore.yaml` - Agent configuration
-- `.bedrock_agentcore/` - Generated Dockerfile and build artifacts
+#### 3. Inject Environment Variables into Dockerfile
 
-### 2. Deploy the Agent
+After `agentcore configure` generates the Dockerfile, you must add your configuration as environment variables:
+
+```bash
+# Append ENV vars to the generated Dockerfile
+cat >> .bedrock_agentcore/langgraph_agent_web_search/Dockerfile << 'EOF'
+
+# Runtime configuration
+ENV AWS_REGION=us-east-2
+ENV SECRET_NAME=langgraph-agent/tavily-api-key
+ENV MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0
+EOF
+```
+
+#### 4. Deploy the Agent
 
 ```bash
 # Using default credentials
@@ -144,16 +204,7 @@ agentcore deploy
 AWS_PROFILE=YourProfileName agentcore deploy
 ```
 
-This will:
-1. Create a Memory resource (~2-3 minutes)
-2. Create an IAM execution role
-3. Create an ECR repository
-4. Build the container via CodeBuild (~1-2 minutes)
-5. Deploy to Bedrock AgentCore
-
-### 3. Grant Secrets Manager Access
-
-After deployment, add permissions for the agent to read the Tavily API key:
+#### 5. Grant Secrets Manager Access
 
 ```bash
 # Get the execution role name from .bedrock_agentcore.yaml
@@ -192,6 +243,8 @@ aws iam put-role-policy \
   --region us-east-2 \
   --profile YourProfileName
 ```
+
+</details>
 
 ## Testing
 
@@ -296,6 +349,8 @@ https://console.aws.amazon.com/cloudwatch/home?region=us-east-2#gen-ai-observabi
 ```
 .
 ├── langgraph_agent_web_search.py  # Main agent code
+├── deploy.sh                      # One-command deployment script
+├── destroy.sh                     # Cleanup script
 ├── requirements.txt               # Python dependencies
 ├── .env.sample                    # Environment variable template
 ├── .env                           # Local environment variables (gitignored)
@@ -322,39 +377,34 @@ https://console.aws.amazon.com/cloudwatch/home?region=us-east-2#gen-ai-observabi
 
 ## Cleanup
 
-To destroy all AWS resources:
+Use the cleanup script to destroy AWS resources:
 
 ```bash
-# Using default credentials
-agentcore destroy --agent langgraph_agent_web_search --force
+# Destroy agent only (keeps secret and ECR for faster redeployment)
+./destroy.sh
 
-# Using a named profile
-AWS_PROFILE=YourProfileName agentcore destroy --agent langgraph_agent_web_search --force
+# Destroy agent with a named profile
+./destroy.sh --profile YourProfileName
+
+# Destroy everything (agent + secret + ECR repository)
+./destroy.sh --all
+
+# Or selectively delete additional resources
+./destroy.sh --delete-secret              # Also delete Secrets Manager secret
+./destroy.sh --delete-ecr                 # Also delete ECR repository
+./destroy.sh --delete-secret --delete-ecr # Same as --all
 ```
 
-This removes:
-- Bedrock AgentCore agent and endpoint
-- ECR images
-- IAM roles (if not shared)
-- S3 artifacts
-- Memory resources
+**What gets deleted:**
 
-To also delete the Secrets Manager secret:
+| Flag | Resources Removed |
+|------|-------------------|
+| *(default)* | AgentCore agent, endpoint, memory, IAM roles, S3 artifacts, ECR images |
+| `--delete-secret` | + Secrets Manager secret |
+| `--delete-ecr` | + ECR repository |
+| `--all` | Everything above |
 
-```bash
-# Using default credentials
-aws secretsmanager delete-secret \
-  --secret-id "langgraph-agent/tavily-api-key" \
-  --force-delete-without-recovery \
-  --region us-east-2
-
-# Using a named profile
-aws secretsmanager delete-secret \
-  --secret-id "langgraph-agent/tavily-api-key" \
-  --force-delete-without-recovery \
-  --region us-east-2 \
-  --profile YourProfileName
-```
+> **Tip:** For iterative development, use `./destroy.sh` without flags. This preserves your secret and ECR repo, making redeployment faster since these don't need to be recreated.
 
 ## Troubleshooting
 

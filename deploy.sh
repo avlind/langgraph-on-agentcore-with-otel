@@ -76,6 +76,23 @@ if [ -z "$TAVILY_API_KEY" ]; then
     exit 1
 fi
 
+# Check if agentcore CLI is available
+if ! command -v agentcore &> /dev/null; then
+    print_error "agentcore command not found."
+    echo ""
+    echo "   The virtual environment may not be activated. Run:"
+    echo ""
+    echo "      source .venv/bin/activate"
+    echo ""
+    echo "   Or if you haven't installed dependencies yet:"
+    echo ""
+    echo "      python3 -m venv .venv"
+    echo "      source .venv/bin/activate"
+    echo "      pip install -r requirements.txt"
+    echo ""
+    exit 1
+fi
+
 # Header
 echo -e "${BLUE}🚀 LangGraph Agent Deployment${NC}"
 echo "=============================="
@@ -167,8 +184,12 @@ print_success "Deployment complete"
 # Step 5: Grant IAM permissions for Secrets Manager
 print_step "5/5" "Granting IAM permissions..."
 
-# Extract role name from config
-ROLE_ARN=$(grep "execution_role:" .bedrock_agentcore.yaml | head -1 | awk '{print $2}')
+# Extract role name from config for the specific agent
+# The YAML structure has agents listed by name, we need to find our agent's execution_role
+ROLE_ARN=$(awk -v agent="$AGENT_NAME" '
+    $0 ~ "^  " agent ":" { in_agent=1 }
+    in_agent && /execution_role:.*Runtime/ { print $2; exit }
+' .bedrock_agentcore.yaml)
 ROLE_NAME=$(echo "$ROLE_ARN" | sed 's/.*role\///')
 
 # Check if policy already exists

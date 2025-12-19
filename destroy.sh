@@ -90,6 +90,17 @@ AWS_REGION="${AWS_REGION:-us-east-2}"
 AGENT_NAME="${AGENT_NAME:-langgraph_agent_web_search}"
 SECRET_NAME="${SECRET_NAME:-langgraph-agent/tavily-api-key}"
 
+# Check if agentcore CLI is available
+if ! command -v agentcore &> /dev/null; then
+    print_error "agentcore command not found."
+    echo ""
+    echo "   The virtual environment may not be activated. Run:"
+    echo ""
+    echo "      source .venv/bin/activate"
+    echo ""
+    exit 1
+fi
+
 # Build AWS CLI base command
 AWS_CMD="aws"
 if [ -n "$AWS_PROFILE_ARG" ]; then

@@ -47,9 +47,14 @@ The agent is a ReAct-style graph in `langgraph_agent_web_search.py`:
 ## Key Implementation Details
 
 - **Secrets handling**: TAVILY_API_KEY is stored in AWS Secrets Manager and fetched at runtime via boto3
-- **ENV injection**: `deploy.sh` injects `AWS_REGION`, `SECRET_NAME`, `MODEL_ID` into the generated Dockerfile (the `--env` flag doesn't work for container deployments)
+- **Environment variables**: `deploy.sh` passes `AWS_REGION`, `SECRET_NAME`, `MODEL_ID` to the container runtime via `agentcore deploy --env` flags
 - **Container deployment**: Required for OpenTelemetry instrumentation - the Dockerfile uses `opentelemetry-instrument` wrapper
 - **IAM role extraction**: `deploy.sh` uses awk to find the correct execution role for the specific agent name in `.bedrock_agentcore.yaml` (multi-agent support)
+
+## Git Commit Guidelines
+
+- Do NOT add "Generated with Claude Code" or similar signatures to commit messages
+- Do NOT add "Co-Authored-By" lines to commits
 
 ## Configuration
 

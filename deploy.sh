@@ -112,7 +112,7 @@ if [ -n "$AWS_PROFILE_ARG" ]; then
 fi
 
 # Step 1: Check/Create Secrets Manager secret
-print_step "1/5" "Checking Secrets Manager..."
+print_step "1/4" "Checking Secrets Manager..."
 
 SECRET_EXISTS=$($AWS_CMD secretsmanager describe-secret \
     --secret-id "$SECRET_NAME" \
@@ -130,7 +130,7 @@ else
 fi
 
 # Step 2: Configure agent
-print_step "2/5" "Configuring agent..."
+print_step "2/4" "Configuring agent..."
 
 # Build agentcore command with profile if needed
 if [ -n "$AWS_PROFILE_ARG" ]; then
@@ -148,39 +148,20 @@ eval $AGENTCORE_PREFIX agentcore configure \
 
 print_success "Agent configured for container deployment"
 
-# Step 3: Inject environment variables into Dockerfile
-print_step "3/5" "Injecting environment variables into Dockerfile..."
+# Step 3: Deploy agent
+print_step "3/4" "Deploying to AgentCore (this may take several minutes)..."
 
-DOCKERFILE=".bedrock_agentcore/$AGENT_NAME/Dockerfile"
-
-if [ -f "$DOCKERFILE" ]; then
-    # Check if our ENV vars are already present (idempotency)
-    if ! grep -q "ENV MODEL_ID=" "$DOCKERFILE"; then
-        cat >> "$DOCKERFILE" << EOF
-
-# Runtime configuration (injected by deploy.sh)
-ENV AWS_REGION=$AWS_REGION
-ENV SECRET_NAME=$SECRET_NAME
-ENV MODEL_ID=$MODEL_ID
-EOF
-        print_success "Environment variables injected into Dockerfile"
-    else
-        print_success "Environment variables already present, skipping"
-    fi
-else
-    print_error "Dockerfile not found at $DOCKERFILE"
-    exit 1
-fi
-
-# Step 4: Deploy agent
-print_step "4/5" "Deploying to AgentCore (this may take several minutes)..."
-
-eval $AGENTCORE_PREFIX agentcore deploy
+# Pass environment variables via --env flag (no Dockerfile injection needed)
+eval $AGENTCORE_PREFIX agentcore deploy \
+    --auto-update-on-conflict \
+    --env "AWS_REGION=$AWS_REGION" \
+    --env "SECRET_NAME=$SECRET_NAME" \
+    --env "MODEL_ID=$MODEL_ID"
 
 print_success "Deployment complete"
 
-# Step 5: Grant IAM permissions for Secrets Manager
-print_step "5/5" "Granting IAM permissions..."
+# Step 4: Grant IAM permissions for Secrets Manager
+print_step "4/4" "Granting IAM permissions..."
 
 # Extract role name from config for the specific agent
 # The YAML structure has agents listed by name, we need to find our agent's execution_role

@@ -101,7 +101,7 @@ aws sts get-caller-identity
 
 ### Using deploy.sh (Required)
 
-The `deploy.sh` script is **required** for deployment because it injects runtime environment variables into the generated Dockerfile. Without this step, the agent would use hardcoded defaults instead of your `.env` configuration.
+The `deploy.sh` script is **required** for deployment because it passes runtime environment variables to the AgentCore container via `--env` flags. Without this step, the agent would use hardcoded defaults instead of your `.env` configuration.
 
 > **Important:** Make sure your virtual environment is activated before running the scripts:
 > ```bash
@@ -120,20 +120,19 @@ The `deploy.sh` script is **required** for deployment because it injects runtime
 
 | Step | Action |
 |------|--------|
-| 1/5 | **Secrets Manager** - Creates the API key secret (if it doesn't exist) |
-| 2/5 | **Configure** - Runs `agentcore configure` to generate Dockerfile |
-| 3/5 | **Inject ENV vars** - Adds `AWS_REGION`, `SECRET_NAME`, `MODEL_ID` to Dockerfile |
-| 4/5 | **Deploy** - Builds container via CodeBuild and deploys to AgentCore |
-| 5/5 | **IAM permissions** - Grants Secrets Manager access to execution role |
+| 1/4 | **Secrets Manager** - Creates the API key secret (if it doesn't exist) |
+| 2/4 | **Configure** - Runs `agentcore configure` to generate Dockerfile |
+| 3/4 | **Deploy** - Builds container via CodeBuild, passes env vars via `--env` flags |
+| 4/4 | **IAM permissions** - Grants Secrets Manager access to execution role |
 
-> **Why is this necessary?** The `agentcore configure` command generates a Dockerfile, but there's no built-in way to pass custom environment variables to the container runtime. The script appends `ENV` statements to the Dockerfile before deployment, ensuring your `.env` configuration is baked into the container.
+> **How environment variables are passed:** The script uses `agentcore deploy --env` flags to pass `AWS_REGION`, `SECRET_NAME`, and `MODEL_ID` to the container runtime. This approach is cleaner than modifying the Dockerfile.
 
 ### Manual Deployment (Advanced)
 
 <details>
 <summary>Click to expand manual deployment steps</summary>
 
-> **Warning:** Manual deployment requires you to manually inject environment variables into the generated Dockerfile after running `agentcore configure`. If you skip this step, the agent will use hardcoded defaults instead of your configuration. **Using `deploy.sh` is strongly recommended.**
+> **Warning:** Manual deployment requires you to pass environment variables via `--env` flags when running `agentcore deploy`. If you skip this step, the agent will use hardcoded defaults instead of your configuration. **Using `deploy.sh` is strongly recommended.**
 
 #### 1. Create Secrets Manager Secret
 
@@ -184,32 +183,25 @@ AWS_PROFILE=YourProfileName agentcore configure \
 
 > **Why `container` mode?** The `direct_code_deploy` mode runs your Python file directly without the `opentelemetry-instrument` wrapper. Container mode generates a Dockerfile with `CMD ["opentelemetry-instrument", "python", "-m", "your_agent"]`, which auto-instruments LangChain, Bedrock, and other libraries for tracing.
 
-#### 3. Inject Environment Variables into Dockerfile
+#### 3. Deploy the Agent
 
-After `agentcore configure` generates the Dockerfile, you must add your configuration as environment variables:
-
-```bash
-# Append ENV vars to the generated Dockerfile
-cat >> .bedrock_agentcore/langgraph_agent_web_search/Dockerfile << 'EOF'
-
-# Runtime configuration
-ENV AWS_REGION=us-east-2
-ENV SECRET_NAME=langgraph-agent/tavily-api-key
-ENV MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0
-EOF
-```
-
-#### 4. Deploy the Agent
+Pass environment variables via `--env` flags:
 
 ```bash
 # Using default credentials
-agentcore deploy
+agentcore deploy \
+  --env "AWS_REGION=us-east-2" \
+  --env "SECRET_NAME=langgraph-agent/tavily-api-key" \
+  --env "MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 # Using a named profile
-AWS_PROFILE=YourProfileName agentcore deploy
+AWS_PROFILE=YourProfileName agentcore deploy \
+  --env "AWS_REGION=us-east-2" \
+  --env "SECRET_NAME=langgraph-agent/tavily-api-key" \
+  --env "MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0"
 ```
 
-#### 5. Grant Secrets Manager Access
+#### 4. Grant Secrets Manager Access
 
 ```bash
 # Get the execution role name from .bedrock_agentcore.yaml

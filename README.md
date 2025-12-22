@@ -126,7 +126,7 @@ The `deploy.sh` script is **required** for deployment because it injects runtime
 | 4/5 | **Deploy** - Builds container via CodeBuild and deploys to AgentCore |
 | 5/5 | **IAM permissions** - Grants Secrets Manager access to execution role |
 
-> **Why is this necessary?** The `agentcore configure` command generates a Dockerfile, but there's no built-in way to pass custom environment variables to the runtime. The script appends `ENV` statements to the Dockerfile before deployment, ensuring your `.env` configuration is baked into the container.
+> **Why is this necessary?** The `agentcore configure` command generates a Dockerfile, but there's no built-in way to pass custom environment variables to the container runtime. The script appends `ENV` statements to the Dockerfile before deployment, ensuring your `.env` configuration is baked into the container.
 
 ### Manual Deployment (Advanced)
 

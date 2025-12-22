@@ -156,8 +156,6 @@ DOCKERFILE=".bedrock_agentcore/$AGENT_NAME/Dockerfile"
 if [ -f "$DOCKERFILE" ]; then
     # Check if our ENV vars are already present (idempotency)
     if ! grep -q "ENV MODEL_ID=" "$DOCKERFILE"; then
-        # Find the line with existing ENV statements and add our vars after
-        # Using a temp file for compatibility with both macOS and Linux sed
         cat >> "$DOCKERFILE" << EOF
 
 # Runtime configuration (injected by deploy.sh)

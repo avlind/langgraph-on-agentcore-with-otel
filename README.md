@@ -141,13 +141,13 @@ The `deploy.sh` script is **required** for deployment because it passes runtime 
 aws secretsmanager create-secret \
   --name "langgraph-agent/tavily-api-key" \
   --secret-string "your-tavily-api-key-here" \
-  --region us-east-2
+  --region <your-region>
 
 # Using a named profile
 aws secretsmanager create-secret \
   --name "langgraph-agent/tavily-api-key" \
   --secret-string "your-tavily-api-key-here" \
-  --region us-east-2 \
+  --region <your-region> \
   --profile YourProfileName
 ```
 
@@ -159,7 +159,7 @@ agentcore configure \
   -e langgraph_agent_web_search.py \
   -n langgraph_agent_web_search \
   -dt container \
-  -r us-east-2 \
+  -r <your-region> \
   --non-interactive
 
 # Using a named profile
@@ -167,7 +167,7 @@ AWS_PROFILE=YourProfileName agentcore configure \
   -e langgraph_agent_web_search.py \
   -n langgraph_agent_web_search \
   -dt container \
-  -r us-east-2 \
+  -r <your-region> \
   --non-interactive
 ```
 
@@ -190,13 +190,13 @@ Pass environment variables via `--env` flags:
 ```bash
 # Using default credentials
 agentcore deploy \
-  --env "AWS_REGION=us-east-2" \
+  --env "AWS_REGION=<your-region>" \
   --env "SECRET_NAME=langgraph-agent/tavily-api-key" \
   --env "MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 # Using a named profile
 AWS_PROFILE=YourProfileName agentcore deploy \
-  --env "AWS_REGION=us-east-2" \
+  --env "AWS_REGION=<your-region>" \
   --env "SECRET_NAME=langgraph-agent/tavily-api-key" \
   --env "MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0"
 ```
@@ -217,11 +217,11 @@ aws iam put-role-policy \
       {
         "Effect": "Allow",
         "Action": ["secretsmanager:GetSecretValue"],
-        "Resource": "arn:aws:secretsmanager:us-east-2:*:secret:langgraph-agent/*"
+        "Resource": "arn:aws:secretsmanager:<your-region>:*:secret:langgraph-agent/*"
       }
     ]
   }' \
-  --region us-east-2
+  --region <your-region>
 
 # Using a named profile
 aws iam put-role-policy \
@@ -233,11 +233,11 @@ aws iam put-role-policy \
       {
         "Effect": "Allow",
         "Action": ["secretsmanager:GetSecretValue"],
-        "Resource": "arn:aws:secretsmanager:us-east-2:*:secret:langgraph-agent/*"
+        "Resource": "arn:aws:secretsmanager:<your-region>:*:secret:langgraph-agent/*"
       }
     ]
   }' \
-  --region us-east-2 \
+  --region <your-region> \
   --profile YourProfileName
 ```
 
@@ -272,13 +272,13 @@ Or use AWS CLI directly:
 aws logs tail /aws/bedrock-agentcore/runtimes/<agent-id>-DEFAULT \
   --log-stream-name-prefix "$(date +%Y/%m/%d)/[runtime-logs]" \
   --follow \
-  --region us-east-2
+  --region <your-region>
 
 # Using a named profile
 aws logs tail /aws/bedrock-agentcore/runtimes/<agent-id>-DEFAULT \
   --log-stream-name-prefix "$(date +%Y/%m/%d)/[runtime-logs]" \
   --follow \
-  --region us-east-2 \
+  --region <your-region> \
   --profile YourProfileName
 ```
 
@@ -338,7 +338,7 @@ Example output:
 View the GenAI Observability Dashboard in the AWS Console:
 
 ```
-https://console.aws.amazon.com/cloudwatch/home?region=us-east-2#gen-ai-observability/agent-core
+https://console.aws.amazon.com/cloudwatch/home?region=<your-region>#gen-ai-observability/agent-core
 ```
 
 ## Project Structure

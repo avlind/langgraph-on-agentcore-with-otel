@@ -29,16 +29,16 @@ help: ## Show this help message
 	@echo "  make invoke PROFILE=PowerUser # Test the deployed agent"
 
 setup: ## Install dependencies with uv
-	uv sync
+	uv sync --extra deploy
 	@echo ""
 	@echo "Setup complete. Dependencies installed."
 	@echo "Use 'uv run <command>' or 'make <target>' to run commands."
 
 test: ## Run all tests
-	uv run pytest tests/ -v
+	uv run pytest
 
 test-cov: ## Run tests with coverage report
-	uv run pytest tests/ -v --cov=. --cov-report=term-missing
+	uv run pytest --cov=. --cov-report=term-missing
 
 lint: ## Run linter and format check (ruff)
 	uv run ruff check langgraph_agent_web_search.py cdk/

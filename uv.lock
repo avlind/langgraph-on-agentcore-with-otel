@@ -1008,11 +1008,8 @@ name = "langgraph-agentcore-sample"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "aws-cdk-lib" },
     { name = "aws-opentelemetry-distro" },
     { name = "bedrock-agentcore" },
-    { name = "bedrock-agentcore-starter-toolkit" },
-    { name = "constructs" },
     { name = "langchain" },
     { name = "langchain-aws" },
     { name = "langchain-community" },
@@ -1021,6 +1018,13 @@ dependencies = [
     { name = "opentelemetry-instrumentation-langchain" },
     { name = "python-dotenv" },
     { name = "tavily-python" },
+]
+
+[package.optional-dependencies]
+deploy = [
+    { name = "aws-cdk-lib" },
+    { name = "bedrock-agentcore-starter-toolkit" },
+    { name = "constructs" },
 ]
 
 [package.dev-dependencies]
@@ -1032,11 +1036,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aws-cdk-lib", specifier = "~=2.233.0" },
+    { name = "aws-cdk-lib", marker = "extra == 'deploy'", specifier = "~=2.233.0" },
     { name = "aws-opentelemetry-distro", specifier = "~=0.12.2" },
     { name = "bedrock-agentcore", specifier = "~=1.1.1" },
-    { name = "bedrock-agentcore-starter-toolkit", specifier = "~=0.2.5" },
-    { name = "constructs", specifier = "~=10.4.4" },
+    { name = "bedrock-agentcore-starter-toolkit", marker = "extra == 'deploy'", specifier = "~=0.2.5" },
+    { name = "constructs", marker = "extra == 'deploy'", specifier = "~=10.4.4" },
     { name = "langchain", specifier = "~=1.2.0" },
     { name = "langchain-aws", specifier = "~=1.1.0" },
     { name = "langchain-community", specifier = "~=0.4.1" },
@@ -1046,6 +1050,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = "~=1.2.1" },
     { name = "tavily-python", specifier = "~=0.7.17" },
 ]
+provides-extras = ["deploy"]
 
 [package.metadata.requires-dev]
 dev = [

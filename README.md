@@ -92,7 +92,7 @@ This project uses [uv](https://docs.astral.sh/uv/) for fast, reliable dependency
 make setup
 
 # Or using uv directly
-uv sync
+uv sync --extra deploy
 ```
 
 > **Note:** No need to manually activate a virtual environment. Use `uv run <command>` or `make <target>` to run commands with the correct environment.
@@ -557,6 +557,19 @@ Running this agent incurs costs from multiple AWS services:
 - Outbound internet access required for Tavily API calls
 - All AWS API calls use HTTPS
 
+### Container Security
+
+- Container images are stored in ECR but **not actively scanned** for vulnerabilities
+- Enable ECR scanning for production deployments:
+  ```bash
+  # Enable scan-on-push for the agent's ECR repository
+  aws ecr put-image-scanning-configuration \
+      --repository-name bedrock-agentcore-<agent_name> \
+      --image-scanning-configuration scanOnPush=true \
+      --region <your-region>
+  ```
+- For continuous scanning, consider enabling [Amazon Inspector](https://docs.aws.amazon.com/inspector/latest/user/scanning-ecr.html) enhanced scanning
+
 ### Recommendations
 
 1. **Rotate secrets regularly** using Secrets Manager rotation
@@ -611,7 +624,7 @@ make status PROFILE=YourProfile
 uv run agentcore status
 ```
 
-If dependencies aren't installed, run `uv sync` first.
+If dependencies aren't installed, run `uv sync --extra deploy` first.
 
 ### Agent fails to start with "TAVILY_API_KEY not found"
 

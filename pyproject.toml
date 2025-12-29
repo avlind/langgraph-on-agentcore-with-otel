@@ -5,6 +5,7 @@ description = "LangGraph agent with web search deployed to AWS Bedrock AgentCore
 readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"
+# Runtime dependencies only - these are what get packaged in the Docker container
 dependencies = [
     # Core LangChain/LangGraph
     "langchain~=1.2.0",
@@ -15,15 +16,19 @@ dependencies = [
     # Tools and utilities
     "tavily-python~=0.7.17",
     "python-dotenv~=1.2.1",
-    # AWS Bedrock AgentCore
+    # AWS Bedrock AgentCore runtime SDK
     "bedrock-agentcore~=1.1.1",
-    "bedrock-agentcore-starter-toolkit~=0.2.5",
     # OpenTelemetry instrumentation
     "opentelemetry-instrumentation-langchain~=0.45.6",
     "aws-opentelemetry-distro~=0.12.2",
-    # CDK for infrastructure management
-    "aws-cdk-lib~=2.233.0",
-    "constructs~=10.4.4",
+]
+
+[project.optional-dependencies]
+# Local deployment tools - NOT included in Docker container
+deploy = [
+    "bedrock-agentcore-starter-toolkit~=0.2.5",  # agentcore CLI
+    "aws-cdk-lib~=2.233.0",                       # CDK for infrastructure
+    "constructs~=10.4.4",                         # CDK dependency
 ]
 
 [dependency-groups]

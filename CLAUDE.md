@@ -4,31 +4,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LangGraph agent with Tavily web search deployed to AWS Bedrock AgentCore. Uses Claude Haiku via Bedrock with OpenTelemetry instrumentation for full observability. Infrastructure is managed with AWS CDK.
+LangGraph agent with Tavily web search deployed to AWS Bedrock AgentCore. Uses Claude Haiku via Bedrock with OpenTelemetry instrumentation for full observability. Infrastructure is managed with AWS CDK. Dependencies are managed with uv.
 
 ## Common Commands
 
 ```bash
-# Activate virtual environment (REQUIRED before any commands)
-source .venv/bin/activate
+# Install dependencies (creates .venv automatically)
+uv sync
+
+# Run tests
+make test
+
+# Lint and format code
+make lint
+make format
 
 # Deploy agent to AWS (includes CDK infrastructure)
-./deploy.sh --profile YourProfileName
+make deploy PROFILE=YourProfileName
 
 # Destroy agent and cleanup AWS resources
-./destroy.sh --profile YourProfileName --all
+make destroy-all PROFILE=YourProfileName
 
 # Test the deployed agent
-AWS_PROFILE=YourProfileName agentcore invoke '{"prompt": "Search for AWS news"}'
+make invoke PROFILE=YourProfileName
 
 # View agent status
-AWS_PROFILE=YourProfileName agentcore status
+make status PROFILE=YourProfileName
 
-# View traces with timing breakdown
-AWS_PROFILE=YourProfileName agentcore obs show --last 1 --verbose
+# View traces
+make traces PROFILE=YourProfileName
 
 # Tail runtime logs
-AWS_PROFILE=YourProfileName agentcore logs --follow
+make logs PROFILE=YourProfileName
 ```
 
 ## Architecture
@@ -53,12 +60,14 @@ The agent is a ReAct-style graph in `langgraph_agent_web_search.py`:
 
 ## Key Implementation Details
 
+- **Dependency management**: Uses uv with `pyproject.toml` and `uv.lock`
 - **Infrastructure as Code**: AWS CDK (Python) manages Secrets Manager and IAM policies in `cdk/` directory
 - **Secrets handling**: TAVILY_API_KEY is stored in AWS Secrets Manager via CDK SecretsStack
 - **IAM policies**: CDK IamPolicyStack grants `secretsmanager:GetSecretValue` to execution role
 - **Environment variables**: `deploy.sh` passes `AWS_REGION`, `SECRET_NAME`, `MODEL_ID` to the container runtime via `agentcore deploy --env` flags
 - **Container deployment**: Required for OpenTelemetry instrumentation - the Dockerfile uses `opentelemetry-instrument` wrapper
 - **Two-phase CDK deployment**: SecretsStack deploys before agentcore, IamPolicyStack deploys after (needs execution role ARN)
+- **Linting/Formatting**: Uses ruff for both linting and formatting
 
 ## CDK Stacks
 

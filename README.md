@@ -13,17 +13,46 @@ This agent:
 
 ## Architecture
 
-```text
-User Request → Bedrock AgentCore → LangGraph Agent → Claude Haiku (Bedrock)
-                                                   ↘ Tavily Search API
+```mermaid
+flowchart TB
+    subgraph Client
+        User[User Request]
+    end
+
+    subgraph AWS["AWS Cloud"]
+        subgraph AgentCore["Bedrock AgentCore"]
+            Runtime[Agent Runtime]
+            subgraph Agent["LangGraph Agent"]
+                Chatbot[Chatbot Node]
+                Tools[Tools Node]
+                Chatbot -->|tool call| Tools
+                Tools -->|result| Chatbot
+            end
+        end
+
+        Bedrock[Amazon Bedrock<br/>Claude Haiku]
+        Secrets[Secrets Manager<br/>Tavily API Key]
+
+        subgraph CDK["CDK Managed"]
+            SecretsStack[SecretsStack]
+            IamStack[IamPolicyStack]
+        end
+    end
+
+    subgraph External
+        Tavily[Tavily Search API]
+    end
+
+    User --> Runtime
+    Runtime --> Agent
+    Chatbot --> Bedrock
+    Tools --> Tavily
+    Runtime -.->|fetch secret| Secrets
+    SecretsStack -.->|creates| Secrets
+    IamStack -.->|grants access| Secrets
 ```
 
-The agent uses a simple ReAct-style graph:
-
-1. **Chatbot Node**: Invokes Claude Haiku with tools
-2. **Tools Condition**: Routes to tools if LLM requests a tool call
-3. **Tools Node**: Executes the Tavily search tool
-4. Loop back to Chatbot until complete
+The agent uses a ReAct-style graph where the **Chatbot Node** invokes Claude Haiku, and if a tool call is requested, the **Tools Node** executes the Tavily search and returns results back to the chatbot.
 
 ## Prerequisites
 

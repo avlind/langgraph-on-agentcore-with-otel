@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LangGraph agent with Tavily web search deployed to AWS Bedrock AgentCore. Uses Claude Haiku via Bedrock with OpenTelemetry instrumentation for full observability.
+LangGraph agent with Tavily web search deployed to AWS Bedrock AgentCore. Uses Claude Haiku via Bedrock with OpenTelemetry instrumentation for full observability. Infrastructure is managed with AWS CDK.
 
 ## Common Commands
 
@@ -12,7 +12,7 @@ LangGraph agent with Tavily web search deployed to AWS Bedrock AgentCore. Uses C
 # Activate virtual environment (REQUIRED before any commands)
 source .venv/bin/activate
 
-# Deploy agent to AWS
+# Deploy agent to AWS (includes CDK infrastructure)
 ./deploy.sh --profile YourProfileName
 
 # Destroy agent and cleanup AWS resources
@@ -34,6 +34,13 @@ AWS_PROFILE=YourProfileName agentcore logs --follow
 ## Architecture
 
 ```
+CDK manages:                    agentcore CLI manages:
+├── SecretsStack               ├── Agent runtime
+│   └── Secrets Manager        ├── Execution role
+└── IamPolicyStack             ├── ECR repository
+    └── IAM policy             ├── CodeBuild
+                               └── S3 artifacts
+
 User Request → Bedrock AgentCore → LangGraph Agent → Claude Haiku (Bedrock)
                                                    ↘ Tavily Search API
 ```
@@ -46,10 +53,19 @@ The agent is a ReAct-style graph in `langgraph_agent_web_search.py`:
 
 ## Key Implementation Details
 
-- **Secrets handling**: TAVILY_API_KEY is stored in AWS Secrets Manager and fetched at runtime via boto3
+- **Infrastructure as Code**: AWS CDK (Python) manages Secrets Manager and IAM policies in `cdk/` directory
+- **Secrets handling**: TAVILY_API_KEY is stored in AWS Secrets Manager via CDK SecretsStack
+- **IAM policies**: CDK IamPolicyStack grants `secretsmanager:GetSecretValue` to execution role
 - **Environment variables**: `deploy.sh` passes `AWS_REGION`, `SECRET_NAME`, `MODEL_ID` to the container runtime via `agentcore deploy --env` flags
 - **Container deployment**: Required for OpenTelemetry instrumentation - the Dockerfile uses `opentelemetry-instrument` wrapper
-- **IAM role extraction**: `deploy.sh` uses awk to find the correct execution role for the specific agent name in `.bedrock_agentcore.yaml` (multi-agent support)
+- **Two-phase CDK deployment**: SecretsStack deploys before agentcore, IamPolicyStack deploys after (needs execution role ARN)
+
+## CDK Stacks
+
+| Stack | Resources | When Deployed |
+|-------|-----------|---------------|
+| `SecretsStack` | Secrets Manager secret | Before agentcore configure |
+| `IamPolicyStack` | IAM inline policy | After agentcore deploy |
 
 ## Git Commit Guidelines
 

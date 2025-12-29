@@ -53,12 +53,12 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --profile NAME    AWS CLI profile name (for SSO users)"
-            echo "  --delete-secret   Also delete the Secrets Manager secret"
+            echo "  --delete-secret   Also delete the Secrets Manager secret (CDK stack)"
             echo "  --delete-ecr      Also delete the ECR repository"
             echo "  --all             Delete everything (agent + secret + ECR)"
             echo "  -h, --help        Show this help message"
             echo ""
-            echo "By default, only the AgentCore agent is destroyed."
+            echo "By default, only the AgentCore agent and IAM policy stack are destroyed."
             echo "The secret and ECR repo are preserved for faster redeployment."
             exit 0
             ;;
@@ -115,7 +115,7 @@ else
 fi
 
 # Calculate total steps
-TOTAL_STEPS=1
+TOTAL_STEPS=2  # IAM policy stack + AgentCore agent
 if [ "$DELETE_SECRET" = true ]; then
     TOTAL_STEPS=$((TOTAL_STEPS + 1))
 fi
@@ -141,7 +141,29 @@ if [ -n "$AWS_PROFILE_ARG" ]; then
     echo "   Profile: $AWS_PROFILE_ARG"
 fi
 
-# Step 1: Destroy AgentCore agent
+# Step 1: Destroy IAM Policy Stack (CloudFormation)
+CURRENT_STEP=$((CURRENT_STEP + 1))
+print_step "$CURRENT_STEP/$TOTAL_STEPS" "Destroying IAM policy stack..."
+
+# Check if stack exists before trying to delete
+STACK_EXISTS=$($AWS_CMD cloudformation describe-stacks \
+    --stack-name IamPolicyStack \
+    --region "$AWS_REGION" 2>/dev/null || echo "NOT_FOUND")
+
+if [[ "$STACK_EXISTS" != "NOT_FOUND" ]]; then
+    $AWS_CMD cloudformation delete-stack \
+        --stack-name IamPolicyStack \
+        --region "$AWS_REGION"
+    # Wait for deletion to complete
+    $AWS_CMD cloudformation wait stack-delete-complete \
+        --stack-name IamPolicyStack \
+        --region "$AWS_REGION" 2>/dev/null || true
+    print_success "IAM policy stack destroyed"
+else
+    print_warning "IAM policy stack not found, skipping"
+fi
+
+# Step 2: Destroy AgentCore agent
 CURRENT_STEP=$((CURRENT_STEP + 1))
 print_step "$CURRENT_STEP/$TOTAL_STEPS" "Destroying AgentCore agent..."
 
@@ -153,11 +175,29 @@ else
     print_warning "No .bedrock_agentcore.yaml found, agent may already be destroyed"
 fi
 
-# Step 2: Delete Secrets Manager secret (if requested)
+# Step 3: Delete Secrets Stack - if requested
 if [ "$DELETE_SECRET" = true ]; then
     CURRENT_STEP=$((CURRENT_STEP + 1))
-    print_step "$CURRENT_STEP/$TOTAL_STEPS" "Deleting Secrets Manager secret..."
+    print_step "$CURRENT_STEP/$TOTAL_STEPS" "Destroying Secrets Manager stack..."
 
+    # Check if stack exists
+    STACK_EXISTS=$($AWS_CMD cloudformation describe-stacks \
+        --stack-name SecretsStack \
+        --region "$AWS_REGION" 2>/dev/null || echo "NOT_FOUND")
+
+    if [[ "$STACK_EXISTS" != "NOT_FOUND" ]]; then
+        $AWS_CMD cloudformation delete-stack \
+            --stack-name SecretsStack \
+            --region "$AWS_REGION"
+        $AWS_CMD cloudformation wait stack-delete-complete \
+            --stack-name SecretsStack \
+            --region "$AWS_REGION" 2>/dev/null || true
+        print_success "Secrets stack destroyed"
+    else
+        print_warning "Secrets stack not found, skipping"
+    fi
+
+    # Also delete the actual secret since it has RETAIN policy
     SECRET_EXISTS=$($AWS_CMD secretsmanager describe-secret \
         --secret-id "$SECRET_NAME" \
         --region "$AWS_REGION" 2>/dev/null || echo "NOT_FOUND")
@@ -173,7 +213,7 @@ if [ "$DELETE_SECRET" = true ]; then
     fi
 fi
 
-# Step 3: Delete ECR repository (if requested)
+# Step 4: Delete ECR repository (if requested) - not managed by CDK
 if [ "$DELETE_ECR" = true ]; then
     CURRENT_STEP=$((CURRENT_STEP + 1))
     print_step "$CURRENT_STEP/$TOTAL_STEPS" "Deleting ECR repository..."

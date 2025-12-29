@@ -8,3 +8,7 @@ bedrock-agentcore>=1.1.0
 bedrock-agentcore-starter-toolkit>=0.2.0
 opentelemetry-instrumentation-langchain
 aws-opentelemetry-distro~=0.12.1
+
+# CDK for infrastructure management
+aws-cdk-lib>=2.170.0
+constructs>=10.0.0

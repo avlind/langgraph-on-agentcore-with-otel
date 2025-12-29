@@ -93,6 +93,40 @@ if ! command -v agentcore &> /dev/null; then
     exit 1
 fi
 
+# Check if CDK is available
+if ! command -v cdk &> /dev/null; then
+    print_error "AWS CDK CLI not found."
+    echo ""
+    echo "   Install it globally with:"
+    echo ""
+    echo "      npm install -g aws-cdk"
+    echo ""
+    exit 1
+fi
+
+# Build AWS CLI base command (needed for bootstrap check)
+AWS_CMD="aws"
+if [ -n "$AWS_PROFILE_ARG" ]; then
+    AWS_CMD="aws --profile $AWS_PROFILE_ARG"
+fi
+
+# Check if CDK is bootstrapped in this account/region
+BOOTSTRAP_CHECK=$($AWS_CMD cloudformation describe-stacks \
+    --stack-name CDKToolkit \
+    --region "$AWS_REGION" 2>/dev/null || echo "NOT_FOUND")
+
+if [[ "$BOOTSTRAP_CHECK" == "NOT_FOUND" ]]; then
+    print_warning "CDK not bootstrapped in this account/region."
+    echo ""
+    echo "   Bootstrapping CDK (one-time setup)..."
+    ACCOUNT_ID=$($AWS_CMD sts get-caller-identity --query Account --output text)
+    cdk bootstrap "aws://$ACCOUNT_ID/$AWS_REGION" || {
+        print_error "CDK bootstrap failed"
+        exit 1
+    }
+    print_success "CDK bootstrapped successfully"
+fi
+
 # Header
 echo -e "${BLUE}🚀 LangGraph Agent Deployment${NC}"
 echo "=============================="
@@ -105,39 +139,29 @@ if [ -n "$AWS_PROFILE_ARG" ]; then
     echo "   Profile: $AWS_PROFILE_ARG"
 fi
 
-# Build AWS CLI base command
-AWS_CMD="aws"
-if [ -n "$AWS_PROFILE_ARG" ]; then
-    AWS_CMD="aws --profile $AWS_PROFILE_ARG"
-fi
-
-# Step 1: Check/Create Secrets Manager secret
-print_step "1/4" "Checking Secrets Manager..."
-
-SECRET_EXISTS=$($AWS_CMD secretsmanager describe-secret \
-    --secret-id "$SECRET_NAME" \
-    --region "$AWS_REGION" 2>/dev/null || echo "NOT_FOUND")
-
-if [[ "$SECRET_EXISTS" == "NOT_FOUND" ]]; then
-    print_warning "Secret not found, creating..."
-    $AWS_CMD secretsmanager create-secret \
-        --name "$SECRET_NAME" \
-        --secret-string "$TAVILY_API_KEY" \
-        --region "$AWS_REGION" > /dev/null
-    print_success "Secret created: $SECRET_NAME"
-else
-    print_success "Secret already exists, skipping creation"
-fi
-
-# Step 2: Configure agent
-print_step "2/4" "Configuring agent..."
-
-# Build agentcore command with profile if needed
+# Build agentcore command prefix
 if [ -n "$AWS_PROFILE_ARG" ]; then
     AGENTCORE_PREFIX="AWS_PROFILE=$AWS_PROFILE_ARG"
 else
     AGENTCORE_PREFIX=""
 fi
+
+# Step 1: Deploy Secrets Manager secret via CDK
+print_step "1/5" "Deploying Secrets Manager secret (CDK)..."
+
+cd cdk
+cdk deploy SecretsStack \
+    --context secret_name="$SECRET_NAME" \
+    --context tavily_api_key="$TAVILY_API_KEY" \
+    --require-approval never \
+    --outputs-file cdk-outputs.json \
+    2>&1 | grep -v "^$" || true
+cd ..
+
+print_success "Secret deployed via CDK"
+
+# Step 2: Configure agent
+print_step "2/5" "Configuring agent..."
 
 eval $AGENTCORE_PREFIX agentcore configure \
     -e langgraph_agent_web_search.py \
@@ -149,7 +173,7 @@ eval $AGENTCORE_PREFIX agentcore configure \
 print_success "Agent configured for container deployment"
 
 # Step 3: Deploy agent
-print_step "3/4" "Deploying to AgentCore (this may take several minutes)..."
+print_step "3/5" "Deploying to AgentCore (this may take several minutes)..."
 
 # Pass environment variables via --env flag (no Dockerfile injection needed)
 eval $AGENTCORE_PREFIX agentcore deploy \
@@ -160,45 +184,47 @@ eval $AGENTCORE_PREFIX agentcore deploy \
 
 print_success "Deployment complete"
 
-# Step 4: Grant IAM permissions for Secrets Manager
-print_step "4/4" "Granting IAM permissions..."
+# Step 4: Extract execution role ARN
+print_step "4/5" "Extracting execution role ARN..."
 
-# Extract role name from config for the specific agent
-# The YAML structure has agents listed by name, we need to find our agent's execution_role
 ROLE_ARN=$(awk -v agent="$AGENT_NAME" '
     $0 ~ "^  " agent ":" { in_agent=1 }
     in_agent && /execution_role:.*Runtime/ { print $2; exit }
 ' .bedrock_agentcore.yaml)
-ROLE_NAME=$(echo "$ROLE_ARN" | sed 's/.*role\///')
 
-# Check if policy already exists
-POLICY_EXISTS=$($AWS_CMD iam get-role-policy \
-    --role-name "$ROLE_NAME" \
-    --policy-name SecretsManagerAccess \
-    --region "$AWS_REGION" 2>/dev/null || echo "NOT_FOUND")
-
-if [[ "$POLICY_EXISTS" == "NOT_FOUND" ]]; then
-    # Get AWS account ID for the policy
-    ACCOUNT_ID=$($AWS_CMD sts get-caller-identity --query Account --output text)
-
-    $AWS_CMD iam put-role-policy \
-        --role-name "$ROLE_NAME" \
-        --policy-name SecretsManagerAccess \
-        --policy-document "{
-            \"Version\": \"2012-10-17\",
-            \"Statement\": [
-                {
-                    \"Effect\": \"Allow\",
-                    \"Action\": [\"secretsmanager:GetSecretValue\"],
-                    \"Resource\": \"arn:aws:secretsmanager:$AWS_REGION:$ACCOUNT_ID:secret:${SECRET_NAME}*\"
-                }
-            ]
-        }" \
-        --region "$AWS_REGION"
-    print_success "Secrets Manager access granted to execution role"
-else
-    print_success "IAM policy already exists, skipping"
+if [ -z "$ROLE_ARN" ]; then
+    print_error "Could not extract execution role ARN from .bedrock_agentcore.yaml"
+    exit 1
 fi
+
+print_success "Found role: $ROLE_ARN"
+
+# Get secret ARN from CDK outputs
+SECRET_ARN=$($AWS_CMD cloudformation describe-stacks \
+    --stack-name SecretsStack \
+    --query "Stacks[0].Outputs[?OutputKey=='SecretArn'].OutputValue" \
+    --output text \
+    --region "$AWS_REGION")
+
+if [ -z "$SECRET_ARN" ] || [ "$SECRET_ARN" = "None" ]; then
+    print_error "Could not retrieve Secret ARN from CloudFormation outputs"
+    exit 1
+fi
+
+print_success "Found secret: $SECRET_ARN"
+
+# Step 5: Grant IAM permissions via CDK
+print_step "5/5" "Granting IAM permissions (CDK)..."
+
+cd cdk
+cdk deploy IamPolicyStack \
+    --context execution_role_arn="$ROLE_ARN" \
+    --context secret_arn="$SECRET_ARN" \
+    --require-approval never \
+    2>&1 | grep -v "^$" || true
+cd ..
+
+print_success "IAM policy attached via CDK"
 
 # Success message
 echo ""

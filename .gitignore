@@ -10,6 +10,11 @@ __pycache__/
 dist/
 build/
 
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
 # AgentCore build artifacts and config (contains account-specific info)
 .bedrock_agentcore/
 .bedrock_agentcore.yaml
@@ -23,6 +28,7 @@ cdk/cdk-outputs.json
 .vscode/
 *.swp
 *.swo
+.mcp.json
 
 # OS
 .DS_Store

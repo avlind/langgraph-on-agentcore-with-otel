@@ -59,6 +59,11 @@ cd langgraph-to-agentcore-sample
 ### 2. Create Python Virtual Environment
 
 ```bash
+# Option A: Using Makefile (recommended)
+make setup
+source .venv/bin/activate
+
+# Option B: Manual setup
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -103,6 +108,22 @@ aws sso login --profile YourProfileName
 aws sts get-caller-identity
 ```
 
+## Running Tests
+
+Before deploying, run the test suite to verify everything works:
+
+```bash
+# Run all tests
+make test
+
+# Run with coverage report
+make test-cov
+```
+
+The test suite includes:
+- **Agent tests** (`tests/test_agent.py`): Tests for secret fetching, payload handling, and state management
+- **CDK tests** (`tests/test_cdk.py`): Infrastructure tests for Secrets Manager and IAM policy stacks
+
 ## Deployment
 
 ### Using deploy.sh (Required)
@@ -116,11 +137,13 @@ The `deploy.sh` script is **required** for deployment because it passes runtime 
 > ```
 
 ```bash
-# Using default credentials
-./deploy.sh
+# Using Makefile (recommended)
+make deploy                          # Default credentials
+make deploy PROFILE=YourProfileName  # Named profile (SSO users)
 
-# Using a named AWS profile (SSO users)
-./deploy.sh --profile YourProfileName
+# Or using the script directly
+./deploy.sh                          # Default credentials
+./deploy.sh --profile YourProfileName # Named profile (SSO users)
 ```
 
 **What the script does:**
@@ -363,6 +386,7 @@ https://console.aws.amazon.com/cloudwatch/home?region=<your-region>#gen-ai-obser
 ├── langgraph_agent_web_search.py  # Main agent code
 ├── deploy.sh                      # One-command deployment script
 ├── destroy.sh                     # Cleanup script
+├── Makefile                       # Common development commands
 ├── requirements.txt               # Python dependencies
 ├── .env.sample                    # Environment variable template
 ├── .env                           # Local environment variables (gitignored)
@@ -371,8 +395,13 @@ https://console.aws.amazon.com/cloudwatch/home?region=<your-region>#gen-ai-obser
 │   ├── app.py                     # CDK app entry point
 │   ├── cdk.json                   # CDK configuration
 │   └── stacks/                    # CDK stack definitions
+│       ├── __init__.py            # Stack exports
+│       ├── constants.py           # Shared constants
 │       ├── secrets_stack.py       # Secrets Manager resources
 │       └── iam_stack.py           # IAM policies
+├── tests/                         # Test suite
+│   ├── test_agent.py              # Agent unit tests
+│   └── test_cdk.py                # CDK infrastructure tests
 ├── .bedrock_agentcore.yaml        # Agent configuration (generated)
 └── .bedrock_agentcore/            # Build artifacts (generated)
     └── langgraph_agent_web_search/
@@ -394,22 +423,154 @@ https://console.aws.amazon.com/cloudwatch/home?region=<your-region>#gen-ai-obser
 | `aws-opentelemetry-distro`                | AWS OTEL distribution          |
 | `aws-cdk-lib`                             | AWS CDK infrastructure library |
 | `constructs`                              | CDK constructs library         |
+| `pytest`                                  | Testing framework              |
+
+## Makefile Commands
+
+A Makefile is provided for common operations. Run `make help` to see all available targets.
+
+### Setup & Testing
+
+```bash
+make setup         # Create venv and install dependencies
+make test          # Run all tests
+make test-cov      # Run tests with coverage report
+make lint          # Run linters (ruff and black)
+make format        # Format code with black
+```
+
+### Deployment & Operations
+
+```bash
+make deploy PROFILE=YourProfile      # Deploy agent to AWS
+make destroy PROFILE=YourProfile     # Destroy agent only (keeps secret and ECR)
+make destroy-all PROFILE=YourProfile # Destroy all resources including secret and ECR
+```
+
+### Runtime Commands
+
+```bash
+make status PROFILE=YourProfile  # Check agent status
+make invoke PROFILE=YourProfile  # Test the deployed agent
+make logs PROFILE=YourProfile    # Tail agent logs
+make traces PROFILE=YourProfile  # List recent traces
+```
+
+### Cleanup
+
+```bash
+make clean         # Remove build artifacts and cache files (.venv, __pycache__, cdk.out)
+```
+
+> **Note:** The `PROFILE` argument is optional. Omit it to use default AWS credentials.
+
+## Customizing the Agent
+
+### Adding a New Tool
+
+To add a new tool to the agent:
+
+1. **Install the tool package** (if needed):
+
+   ```bash
+   pip install langchain-some-tool
+   ```
+
+2. **Import and configure the tool** in `langgraph_agent_web_search.py`:
+
+   ```python
+   from langchain_community.tools import SomeTool
+
+   # After the Tavily search definition
+   some_tool = SomeTool(param="value")
+   tools = [search, some_tool]  # Add to tools list
+   ```
+
+3. **Redeploy**:
+
+   ```bash
+   ./deploy.sh --profile YourProfile
+   ```
+
+### Changing the LLM Model
+
+Update `MODEL_ID` in `.env` to use a different Bedrock model:
+
+```bash
+# Claude Sonnet (more capable, higher cost)
+MODEL_ID=anthropic.claude-3-sonnet-20240229-v1:0
+
+# Claude Haiku (faster, lower cost) - default
+MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0
+```
+
+### Adjusting Search Results
+
+Modify `max_results` in `langgraph_agent_web_search.py`:
+
+```python
+search = TavilySearchResults(max_results=5)  # Default is 3
+```
+
+## Cost Estimation
+
+Running this agent incurs costs from multiple AWS services:
+
+| Service | Cost Factor | Estimate |
+|---------|-------------|----------|
+| **Bedrock (Claude Haiku)** | ~$0.25/1M input tokens, ~$1.25/1M output tokens | ~$0.001-0.01 per invocation |
+| **Tavily API** | Free tier: 1000 searches/month | $0 (free tier) or $50+/month |
+| **AgentCore Runtime** | Compute time | Varies by usage |
+| **Secrets Manager** | $0.40/secret/month + $0.05/10K API calls | ~$0.50/month |
+| **ECR** | $0.10/GB/month storage | ~$0.05/month |
+| **CloudWatch Logs** | $0.50/GB ingested | ~$0.10/month (low usage) |
+
+**Estimated monthly cost for light usage (100 invocations/month):** $1-5
+
+> **Tip:** Use `agentcore obs list` to monitor invocation patterns and optimize costs.
+
+## Security Considerations
+
+### Secrets Management
+
+- **API keys** are stored in AWS Secrets Manager, not in code or environment variables
+- The agent fetches secrets at runtime using IAM role permissions
+- Secrets have `RETAIN` removal policy to prevent accidental deletion
+
+### IAM Least Privilege
+
+- The execution role only has `secretsmanager:GetSecretValue` permission
+- Access is scoped to the specific secret ARN (no wildcards)
+- CDK validates ARN formats before deployment
+
+### Network Security
+
+- Agent runs in AWS-managed VPC (AgentCore infrastructure)
+- Outbound internet access required for Tavily API calls
+- All AWS API calls use HTTPS
+
+### Recommendations
+
+1. **Rotate secrets regularly** using Secrets Manager rotation
+2. **Monitor CloudWatch logs** for unusual activity
+3. **Use separate AWS accounts** for dev/staging/production
+4. **Enable CloudTrail** to audit API calls
 
 ## Cleanup
 
 Use the cleanup script to destroy AWS resources:
 
 ```bash
-# Destroy agent only (keeps secret and ECR for faster redeployment)
-./destroy.sh
+# Using Makefile (recommended)
+make destroy PROFILE=YourProfile     # Destroy agent only (keeps secret and ECR)
+make destroy-all PROFILE=YourProfile # Destroy everything
 
-# Destroy agent with a named profile
-./destroy.sh --profile YourProfileName
+# Or using the script directly
+./destroy.sh                          # Destroy agent only
+./destroy.sh --profile YourProfileName # With named profile
+./destroy.sh --all                    # Destroy everything
 
-# Destroy everything (agent + secret + ECR repository)
-./destroy.sh --all
-
-# Or selectively delete additional resources
+# Selective deletion flags
 ./destroy.sh --delete-secret              # Also delete Secrets Manager secret
 ./destroy.sh --delete-ecr                 # Also delete ECR repository
 ./destroy.sh --delete-secret --delete-ecr # Same as --all

@@ -27,20 +27,17 @@ The agent uses a simple ReAct-style graph:
 
 ## Prerequisites
 
-- **AWS Account** with permissions for:
-  - Bedrock AgentCore
-  - IAM (create roles/policies)
-  - ECR (container registry)
-  - S3 (deployment artifacts)
-  - CodeBuild (container builds)
-  - Secrets Manager
-  - CloudWatch Logs
-  - CloudFormation (for CDK)
-- **AWS CLI** configured (either default credentials or a named profile)
-- **AWS CDK CLI** - Install with `npm install -g aws-cdk`
+**Local tools:**
 - **Python 3.13+**
 - **uv** - Fast Python package manager. Install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- **Node.js** (for CDK CLI)
+- **Node.js** - Required for AWS CDK CLI
+
+**AWS tools:**
+- **AWS CLI** - Configured with credentials (default profile or named profile)
+- **AWS CDK CLI** - Install with `npm install -g aws-cdk`
+
+**Accounts & API keys:**
+- **AWS Account** with permissions for Bedrock AgentCore, IAM, ECR, S3, CodeBuild, Secrets Manager, CloudWatch Logs, and CloudFormation
 - **Tavily API Key** - Get one at <https://tavily.com>
 
 > **Note on AWS Credentials:** Commands below show two options:

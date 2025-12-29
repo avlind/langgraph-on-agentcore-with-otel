@@ -14,6 +14,10 @@ build/
 .bedrock_agentcore/
 .bedrock_agentcore.yaml
 
+# CDK build artifacts
+cdk/cdk.out/
+cdk/cdk-outputs.json
+
 # IDE
 .idea/
 .vscode/

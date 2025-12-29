@@ -5,6 +5,7 @@ A sample LangGraph agent with web search capabilities deployed to AWS Bedrock Ag
 ## What This Project Does
 
 This agent:
+
 - Uses **Claude Haiku** (via Amazon Bedrock) as the LLM
 - Performs **web searches** using the Tavily API
 - Runs on **AWS Bedrock AgentCore** with container deployment
@@ -12,12 +13,13 @@ This agent:
 
 ## Architecture
 
-```
+```text
 User Request → Bedrock AgentCore → LangGraph Agent → Claude Haiku (Bedrock)
                                                    ↘ Tavily Search API
 ```
 
 The agent uses a simple ReAct-style graph:
+
 1. **Chatbot Node**: Invokes Claude Haiku with tools
 2. **Tools Condition**: Routes to tools if LLM requests a tool call
 3. **Tools Node**: Executes the Tavily search tool
@@ -33,11 +35,15 @@ The agent uses a simple ReAct-style graph:
   - CodeBuild (container builds)
   - Secrets Manager
   - CloudWatch Logs
+  - CloudFormation (for CDK)
 - **AWS CLI** configured (either default credentials or a named profile)
+- **AWS CDK CLI** - Install with `npm install -g aws-cdk`
 - **Python 3.13+**
-- **Tavily API Key** - Get one at https://tavily.com
+- **Node.js** (for CDK CLI)
+- **Tavily API Key** - Get one at <https://tavily.com>
 
 > **Note on AWS Credentials:** Commands below show two options:
+>
 > - **Default credentials**: Use if you have `~/.aws/credentials` configured or are using environment variables
 > - **Named profile**: Use if you have SSO or multiple profiles configured (replace `YourProfileName` with your profile)
 
@@ -79,13 +85,13 @@ MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0
 SECRET_NAME=langgraph-agent/tavily-api-key
 ```
 
-| Variable | Description |
-|----------|-------------|
-| `TAVILY_API_KEY` | Your Tavily API key (required) |
-| `AWS_REGION` | AWS region for deployment (default: `us-east-2`) |
-| `AGENT_NAME` | Name for your agent in AgentCore |
-| `MODEL_ID` | Bedrock model ID to use |
-| `SECRET_NAME` | Name for the Secrets Manager secret |
+| Variable         | Description                                      |
+| ---------------- | ------------------------------------------------ |
+| `TAVILY_API_KEY` | Your Tavily API key (required)                   |
+| `AWS_REGION`     | AWS region for deployment (default: `us-east-2`) |
+| `AGENT_NAME`     | Name for your agent in AgentCore                 |
+| `MODEL_ID`       | Bedrock model ID to use                          |
+| `SECRET_NAME`    | Name for the Secrets Manager secret              |
 
 ### 4. Ensure AWS Credentials are Active
 
@@ -104,6 +110,7 @@ aws sts get-caller-identity
 The `deploy.sh` script is **required** for deployment because it passes runtime environment variables to the AgentCore container via `--env` flags. Without this step, the agent would use hardcoded defaults instead of your `.env` configuration.
 
 > **Important:** Make sure your virtual environment is activated before running the scripts:
+>
 > ```bash
 > source .venv/bin/activate
 > ```
@@ -118,19 +125,26 @@ The `deploy.sh` script is **required** for deployment because it passes runtime 
 
 **What the script does:**
 
-| Step | Action |
-|------|--------|
-| 1/4 | **Secrets Manager** - Creates the API key secret (if it doesn't exist) |
-| 2/4 | **Configure** - Runs `agentcore configure` to generate Dockerfile |
-| 3/4 | **Deploy** - Builds container via CodeBuild, passes env vars via `--env` flags |
-| 4/4 | **IAM permissions** - Grants Secrets Manager access to execution role |
+| Step | Action                                                                          |
+| ---- | ------------------------------------------------------------------------------- |
+| 1/5  | **CDK SecretsStack** - Deploys Secrets Manager secret via AWS CDK               |
+| 2/5  | **Configure** - Runs `agentcore configure` to generate Dockerfile               |
+| 3/5  | **Deploy** - Builds container via CodeBuild, passes env vars via `--env` flags  |
+| 4/5  | **Extract Role** - Gets execution role ARN from `.bedrock_agentcore.yaml`       |
+| 5/5  | **CDK IamPolicyStack** - Grants Secrets Manager access via AWS CDK              |
 
+> **Infrastructure as Code:** This project uses AWS CDK to manage Secrets Manager secrets and IAM policies. CDK provides version-controlled, reviewable infrastructure that integrates with your team's workflow.
+>
 > **How environment variables are passed:** The script uses `agentcore deploy --env` flags to pass `AWS_REGION`, `SECRET_NAME`, and `MODEL_ID` to the container runtime. This approach is cleaner than modifying the Dockerfile.
+>
+> **First-time setup:** The deploy script automatically bootstraps CDK if needed (one-time per account/region).
 
 ### Manual Deployment (Advanced)
 
+<!-- markdownlint-disable MD033 -->
 <details>
 <summary>Click to expand manual deployment steps</summary>
+<!-- markdownlint-enable MD033 -->
 
 > **Warning:** Manual deployment requires you to pass environment variables via `--env` flags when running `agentcore deploy`. If you skip this step, the agent will use hardcoded defaults instead of your configuration. **Using `deploy.sh` is strongly recommended.**
 
@@ -173,13 +187,13 @@ AWS_PROFILE=YourProfileName agentcore configure \
 
 **Arguments explained:**
 
-| Flag | Description |
-|------|-------------|
-| `-e, --entrypoint` | The Python file containing your agent code and the `@app.entrypoint` decorator |
-| `-n, --name` | Unique name for your agent (used in ARNs, ECR repo names, and CloudWatch logs) |
-| `-dt, --deployment-type` | Either `container` or `direct_code_deploy`. Use `container` for proper OpenTelemetry instrumentation—this wraps your code with `opentelemetry-instrument` in the Dockerfile |
-| `-r, --region` | AWS region to deploy to (must have Bedrock AgentCore available) |
-| `--non-interactive` | Skip interactive prompts; use defaults for unspecified options (useful for CI/CD) |
+| Flag                     | Description                                                                                                                                                     |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-e, --entrypoint`       | The Python file containing your agent code and the `@app.entrypoint` decorator                                                                                  |
+| `-n, --name`             | Unique name for your agent (used in ARNs, ECR repo names, and CloudWatch logs)                                                                                  |
+| `-dt, --deployment-type` | Either `container` or `direct_code_deploy`. Use `container` for proper OpenTelemetry instrumentation—wraps code with `opentelemetry-instrument` in Dockerfile   |
+| `-r, --region`           | AWS region to deploy to (must have Bedrock AgentCore available)                                                                                                 |
+| `--non-interactive`      | Skip interactive prompts; use defaults for unspecified options (useful for CI/CD)                                                                               |
 
 > **Why `container` mode?** The `direct_code_deploy` mode runs your Python file directly without the `opentelemetry-instrument` wrapper. Container mode generates a Dockerfile with `CMD ["opentelemetry-instrument", "python", "-m", "your_agent"]`, which auto-instruments LangChain, Bedrock, and other libraries for tracing.
 
@@ -323,7 +337,8 @@ AWS_PROFILE=YourProfileName agentcore obs show --last 1 --verbose
 ```
 
 Example output:
-```
+
+```text
 🔍 Trace: 694561e74067881e... (6 spans, 4293.24ms)
 ├── ⚠ chatbot.task [1197.63ms]
 │   ├── ⚠ ChatBedrockConverse.chat [1196.88ms]
@@ -337,13 +352,13 @@ Example output:
 
 View the GenAI Observability Dashboard in the AWS Console:
 
-```
+```text
 https://console.aws.amazon.com/cloudwatch/home?region=<your-region>#gen-ai-observability/agent-core
 ```
 
 ## Project Structure
 
-```
+```text
 .
 ├── langgraph_agent_web_search.py  # Main agent code
 ├── deploy.sh                      # One-command deployment script
@@ -352,6 +367,12 @@ https://console.aws.amazon.com/cloudwatch/home?region=<your-region>#gen-ai-obser
 ├── .env.sample                    # Environment variable template
 ├── .env                           # Local environment variables (gitignored)
 ├── .gitignore                     # Git ignore rules
+├── cdk/                           # AWS CDK infrastructure code
+│   ├── app.py                     # CDK app entry point
+│   ├── cdk.json                   # CDK configuration
+│   └── stacks/                    # CDK stack definitions
+│       ├── secrets_stack.py       # Secrets Manager resources
+│       └── iam_stack.py           # IAM policies
 ├── .bedrock_agentcore.yaml        # Agent configuration (generated)
 └── .bedrock_agentcore/            # Build artifacts (generated)
     └── langgraph_agent_web_search/
@@ -360,17 +381,19 @@ https://console.aws.amazon.com/cloudwatch/home?region=<your-region>#gen-ai-obser
 
 ## Key Dependencies
 
-| Package | Purpose |
-|---------|---------|
-| `langgraph` | Agent graph framework |
-| `langchain` | LLM abstraction layer |
-| `langchain-aws` | Bedrock integration |
-| `langchain-community` | Tavily search tool |
-| `tavily-python` | Tavily API client |
-| `bedrock-agentcore` | AgentCore runtime SDK |
-| `bedrock-agentcore-starter-toolkit` | CLI tools |
-| `opentelemetry-instrumentation-langchain` | LangChain tracing |
-| `aws-opentelemetry-distro` | AWS OTEL distribution |
+| Package                                   | Purpose                        |
+| ----------------------------------------- | ------------------------------ |
+| `langgraph`                               | Agent graph framework          |
+| `langchain`                               | LLM abstraction layer          |
+| `langchain-aws`                           | Bedrock integration            |
+| `langchain-community`                     | Tavily search tool             |
+| `tavily-python`                           | Tavily API client              |
+| `bedrock-agentcore`                       | AgentCore runtime SDK          |
+| `bedrock-agentcore-starter-toolkit`       | CLI tools                      |
+| `opentelemetry-instrumentation-langchain` | LangChain tracing              |
+| `aws-opentelemetry-distro`                | AWS OTEL distribution          |
+| `aws-cdk-lib`                             | AWS CDK infrastructure library |
+| `constructs`                              | CDK constructs library         |
 
 ## Cleanup
 
@@ -394,14 +417,16 @@ Use the cleanup script to destroy AWS resources:
 
 **What gets deleted:**
 
-| Flag | Resources Removed |
-|------|-------------------|
-| *(default)* | AgentCore agent, endpoint, memory, IAM roles, S3 artifacts, ECR images |
-| `--delete-secret` | + Secrets Manager secret |
-| `--delete-ecr` | + ECR repository |
-| `--all` | Everything above |
+| Flag              | Resources Removed                                                                             |
+| ----------------- | --------------------------------------------------------------------------------------------- |
+| *(default)*       | CDK IamPolicyStack, AgentCore agent, endpoint, memory, IAM roles, S3 artifacts, ECR images    |
+| `--delete-secret` | + CDK SecretsStack + Secrets Manager secret                                                   |
+| `--delete-ecr`    | + ECR repository                                                                              |
+| `--all`           | Everything above                                                                              |
 
 > **Tip:** For iterative development, use `./destroy.sh` without flags. This preserves your secret and ECR repo, making redeployment faster since these don't need to be recreated.
+>
+> **Note:** The destroy script uses AWS CloudFormation directly to delete CDK stacks, so you don't need the CDK CLI installed for cleanup.
 
 ## Troubleshooting
 
@@ -416,6 +441,7 @@ source .venv/bin/activate
 ### Agent fails to start with "TAVILY_API_KEY not found"
 
 Ensure:
+
 1. The secret exists in Secrets Manager with the correct name
 2. The execution role has the `SecretsManagerAccess` policy attached
 
@@ -436,6 +462,14 @@ agentcore logs --build
 # Using a named profile
 AWS_PROFILE=YourProfileName agentcore logs --build
 ```
+
+### CDK deployment fails
+
+If you see CDK-related errors:
+
+1. **"CDK CLI not found"** - Install with `npm install -g aws-cdk`
+2. **Bootstrap errors** - The deploy script auto-bootstraps, but you can manually run: `cdk bootstrap aws://ACCOUNT_ID/REGION`
+3. **Permission errors** - Ensure your AWS credentials have CloudFormation permissions
 
 ## References
 

@@ -115,16 +115,18 @@ TAVILY_API_KEY=your-tavily-api-key-here
 AWS_REGION=us-east-2
 AGENT_NAME=langgraph_agent_web_search
 MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0
+FALLBACK_MODEL_ID=global.anthropic.claude-sonnet-4-5-20250929-v1:0
 SECRET_NAME=langgraph-agent/tavily-api-key
 ```
 
-| Variable         | Description                                      |
-| ---------------- | ------------------------------------------------ |
-| `TAVILY_API_KEY` | Your Tavily API key (required)                   |
-| `AWS_REGION`     | AWS region for deployment (default: `us-east-2`) |
-| `AGENT_NAME`     | Name for your agent in AgentCore                 |
-| `MODEL_ID`       | Bedrock model ID to use                          |
-| `SECRET_NAME`    | Name for the Secrets Manager secret              |
+| Variable            | Description                                                    |
+| ------------------- | -------------------------------------------------------------- |
+| `TAVILY_API_KEY`    | Your Tavily API key (required)                                 |
+| `AWS_REGION`        | AWS region for deployment (default: `us-east-2`)               |
+| `AGENT_NAME`        | Name for your agent in AgentCore                               |
+| `MODEL_ID`          | Primary Bedrock model ID (default: Haiku)                      |
+| `FALLBACK_MODEL_ID` | Fallback model when primary is unavailable (default: Sonnet)   |
+| `SECRET_NAME`       | Name for the Secrets Manager secret                            |
 
 ### 4. Ensure AWS Credentials are Active
 
@@ -181,7 +183,7 @@ uv run ./deploy.sh --profile YourProfileName # Named profile (SSO users)
 
 > **Infrastructure as Code:** This project uses AWS CDK to manage Secrets Manager secrets and IAM policies. CDK provides version-controlled, reviewable infrastructure that integrates with your team's workflow.
 >
-> **How environment variables are passed:** The script uses `agentcore deploy --env` flags to pass `AWS_REGION`, `SECRET_NAME`, and `MODEL_ID` to the container runtime. This approach is cleaner than modifying the Dockerfile.
+> **How environment variables are passed:** The script uses `agentcore deploy --env` flags to pass `AWS_REGION`, `SECRET_NAME`, `MODEL_ID`, and `FALLBACK_MODEL_ID` to the container runtime. This approach is cleaner than modifying the Dockerfile.
 >
 > **First-time setup:** The deploy script automatically bootstraps CDK if needed (one-time per account/region).
 
@@ -502,15 +504,20 @@ To add a new tool to the agent:
 
 ### Changing the LLM Model
 
-Update `MODEL_ID` in `.env` to use a different Bedrock model:
+Update `MODEL_ID` and `FALLBACK_MODEL_ID` in `.env` to use different Bedrock models:
 
 ```bash
-# Claude Sonnet (more capable, higher cost)
-MODEL_ID=anthropic.claude-3-sonnet-20240229-v1:0
-
-# Claude Haiku (faster, lower cost) - default
+# Primary model (default: Haiku - faster, lower cost)
 MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0
+
+# Fallback model (default: Sonnet - used when primary is unavailable)
+FALLBACK_MODEL_ID=global.anthropic.claude-sonnet-4-5-20250929-v1:0
 ```
+
+**Model Fallback Behavior:**
+- The agent retries the primary model up to 3 times with exponential backoff on throttling/service errors
+- If retries are exhausted, it automatically falls back to the secondary model
+- Both models have the same tools bound for consistent behavior
 
 ### Adjusting Search Results
 

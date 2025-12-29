@@ -75,6 +75,7 @@ fi
 AWS_REGION="${AWS_REGION:-us-east-2}"
 AGENT_NAME="${AGENT_NAME:-langgraph_agent_web_search}"
 MODEL_ID="${MODEL_ID:-global.anthropic.claude-haiku-4-5-20251001-v1:0}"
+FALLBACK_MODEL_ID="${FALLBACK_MODEL_ID:-global.anthropic.claude-sonnet-4-5-20250929-v1:0}"
 SECRET_NAME="${SECRET_NAME:-langgraph-agent/tavily-api-key}"
 
 # Validate required variables
@@ -224,7 +225,8 @@ eval $AGENTCORE_PREFIX agentcore deploy \
     --auto-update-on-conflict \
     --env "AWS_REGION=$AWS_REGION" \
     --env "SECRET_NAME=$SECRET_NAME" \
-    --env "MODEL_ID=$MODEL_ID"
+    --env "MODEL_ID=$MODEL_ID" \
+    --env "FALLBACK_MODEL_ID=$FALLBACK_MODEL_ID"
 
 print_success "Deployment complete"
 

@@ -12,6 +12,7 @@ def mock_env_vars(monkeypatch):
     monkeypatch.setenv("AWS_REGION", "us-east-2")
     monkeypatch.setenv("SECRET_NAME", "test-secret")
     monkeypatch.setenv("MODEL_ID", "test-model")
+    monkeypatch.setenv("FALLBACK_MODEL_ID", "test-fallback-model")
     monkeypatch.setenv("TAVILY_API_KEY", "test-tavily-key")
 
 

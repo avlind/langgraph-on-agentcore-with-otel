@@ -98,3 +98,178 @@ class TestStateDefinition:
         assert len(state["messages"]) == 2
         assert state["messages"][0]["role"] == "user"
         assert state["messages"][1]["role"] == "assistant"
+
+
+class TestExceptionClassification:
+    """Tests for exception classification functions."""
+
+    def test_throttling_is_retryable(self):
+        """Test ThrottlingException triggers retry."""
+        from langgraph_agent_web_search import is_retryable_error, should_fallback
+
+        error = ClientError(
+            {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},
+            "InvokeModel",
+        )
+        assert is_retryable_error(error) is True
+        assert should_fallback(error) is False
+
+    def test_service_unavailable_is_retryable(self):
+        """Test ServiceUnavailable triggers retry."""
+        from langgraph_agent_web_search import is_retryable_error
+
+        error = ClientError(
+            {"Error": {"Code": "ServiceUnavailable", "Message": "Service unavailable"}},
+            "InvokeModel",
+        )
+        assert is_retryable_error(error) is True
+
+    def test_internal_failure_is_retryable(self):
+        """Test InternalFailure triggers retry."""
+        from langgraph_agent_web_search import is_retryable_error
+
+        error = ClientError(
+            {"Error": {"Code": "InternalFailure", "Message": "Internal error"}},
+            "InvokeModel",
+        )
+        assert is_retryable_error(error) is True
+
+    def test_model_not_ready_triggers_fallback(self):
+        """Test ModelNotReadyException triggers fallback."""
+        from langgraph_agent_web_search import is_retryable_error, should_fallback
+
+        error = ClientError(
+            {"Error": {"Code": "ModelNotReadyException", "Message": "Model not ready"}},
+            "InvokeModel",
+        )
+        assert is_retryable_error(error) is False
+        assert should_fallback(error) is True
+
+    def test_access_denied_not_retryable(self):
+        """Test AccessDeniedException doesn't retry or fallback."""
+        from langgraph_agent_web_search import is_retryable_error, should_fallback
+
+        error = ClientError(
+            {"Error": {"Code": "AccessDeniedException", "Message": "Access denied"}},
+            "InvokeModel",
+        )
+        assert is_retryable_error(error) is False
+        assert should_fallback(error) is False
+
+    def test_validation_error_not_retryable(self):
+        """Test ValidationError doesn't retry or fallback."""
+        from langgraph_agent_web_search import is_retryable_error, should_fallback
+
+        error = ClientError(
+            {"Error": {"Code": "ValidationError", "Message": "Invalid input"}},
+            "InvokeModel",
+        )
+        assert is_retryable_error(error) is False
+        assert should_fallback(error) is False
+
+    def test_non_client_error_not_retryable(self):
+        """Test non-ClientError exceptions are not retryable."""
+        from langgraph_agent_web_search import is_retryable_error, should_fallback
+
+        error = ValueError("Some other error")
+        assert is_retryable_error(error) is False
+        assert should_fallback(error) is False
+
+
+class TestResilientLLMInvoker:
+    """Tests for ResilientLLMInvoker class."""
+
+    def test_successful_primary_invocation(self, mock_llm_response):
+        """Test primary model succeeds on first try."""
+        from langgraph_agent_web_search import ResilientLLMInvoker
+
+        mock_primary = MagicMock()
+        mock_primary.invoke.return_value = mock_llm_response
+        mock_fallback = MagicMock()
+
+        invoker = ResilientLLMInvoker(mock_primary, mock_fallback, max_retries=3)
+        result = invoker.invoke([])
+
+        assert result == mock_llm_response
+        assert invoker.using_fallback is False
+        mock_primary.invoke.assert_called_once()
+        mock_fallback.invoke.assert_not_called()
+
+    def test_fallback_on_non_retryable_error(self, mock_llm_response):
+        """Test fallback is used when primary fails with non-retryable error."""
+        from langgraph_agent_web_search import ResilientLLMInvoker
+
+        mock_primary = MagicMock()
+        mock_primary.invoke.side_effect = ValueError("Non-retryable error")
+        mock_fallback = MagicMock()
+        mock_fallback.invoke.return_value = mock_llm_response
+
+        invoker = ResilientLLMInvoker(mock_primary, mock_fallback, max_retries=3)
+        result = invoker.invoke([])
+
+        assert result == mock_llm_response
+        assert invoker.using_fallback is True
+        mock_primary.invoke.assert_called_once()
+        mock_fallback.invoke.assert_called_once()
+
+    def test_retry_then_success(self, mock_llm_response):
+        """Test retry succeeds after initial failure."""
+        from langgraph_agent_web_search import ResilientLLMInvoker
+
+        throttle_error = ClientError(
+            {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},
+            "InvokeModel",
+        )
+        mock_primary = MagicMock()
+        mock_primary.invoke.side_effect = [throttle_error, mock_llm_response]
+        mock_fallback = MagicMock()
+
+        invoker = ResilientLLMInvoker(
+            mock_primary, mock_fallback, max_retries=3, min_wait_seconds=0.01, max_wait_seconds=0.02
+        )
+        result = invoker.invoke([])
+
+        assert result == mock_llm_response
+        assert invoker.using_fallback is False
+        assert mock_primary.invoke.call_count == 2
+        mock_fallback.invoke.assert_not_called()
+
+    def test_fallback_after_max_retries(self, mock_llm_response):
+        """Test fallback after all retries exhausted."""
+        from langgraph_agent_web_search import ResilientLLMInvoker
+
+        throttle_error = ClientError(
+            {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},
+            "InvokeModel",
+        )
+        mock_primary = MagicMock()
+        mock_primary.invoke.side_effect = throttle_error
+        mock_fallback = MagicMock()
+        mock_fallback.invoke.return_value = mock_llm_response
+
+        invoker = ResilientLLMInvoker(
+            mock_primary, mock_fallback, max_retries=3, min_wait_seconds=0.01, max_wait_seconds=0.02
+        )
+        result = invoker.invoke([])
+
+        assert result == mock_llm_response
+        assert invoker.using_fallback is True
+        assert mock_primary.invoke.call_count == 3
+        mock_fallback.invoke.assert_called_once()
+
+    def test_both_models_fail(self):
+        """Test error raised when both models fail."""
+        from langgraph_agent_web_search import ResilientLLMInvoker
+
+        mock_primary = MagicMock()
+        mock_primary.invoke.side_effect = ValueError("Primary failed")
+        mock_fallback = MagicMock()
+        mock_fallback.invoke.side_effect = ValueError("Fallback failed")
+
+        invoker = ResilientLLMInvoker(mock_primary, mock_fallback, max_retries=3)
+
+        with pytest.raises(RuntimeError) as exc_info:
+            invoker.invoke([])
+
+        assert "Both primary and fallback models failed" in str(exc_info.value)
+        assert invoker.using_fallback is True

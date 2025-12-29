@@ -21,6 +21,12 @@ from langchain_core.messages import BaseMessage
 from langgraph.graph import START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
+from tenacity import (
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
 from typing_extensions import TypedDict
 
 # Configure logging
@@ -37,6 +43,126 @@ load_dotenv()
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-2")
 SECRET_NAME = os.environ.get("SECRET_NAME", "langgraph-agent/tavily-api-key")
 MODEL_ID = os.environ.get("MODEL_ID", "global.anthropic.claude-haiku-4-5-20251001-v1:0")
+FALLBACK_MODEL_ID = os.environ.get(
+    "FALLBACK_MODEL_ID", "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+)
+
+# Error codes that should trigger retry on primary model
+RETRYABLE_ERROR_CODES = {
+    "ThrottlingException",
+    "ServiceUnavailable",
+    "InternalFailure",
+    "ServiceException",
+    "RequestTimeout",
+}
+
+# Error codes that should trigger immediate fallback (no retry)
+FALLBACK_ERROR_CODES = {
+    "ModelNotReadyException",
+    "ModelStreamErrorException",
+    "ModelTimeoutException",
+    "ModelErrorException",
+}
+
+
+def is_retryable_error(exception: Exception) -> bool:
+    """Check if exception should trigger a retry on the same model."""
+    if isinstance(exception, ClientError):
+        error_code = exception.response.get("Error", {}).get("Code", "")
+        return error_code in RETRYABLE_ERROR_CODES
+    return False
+
+
+def should_fallback(exception: Exception) -> bool:
+    """Check if exception should trigger fallback to secondary model."""
+    if isinstance(exception, ClientError):
+        error_code = exception.response.get("Error", {}).get("Code", "")
+        return error_code in FALLBACK_ERROR_CODES
+    return False
+
+
+class ResilientLLMInvoker:
+    """Wrapper that provides retry and fallback logic for LLM invocations."""
+
+    def __init__(
+        self,
+        primary_llm_with_tools,
+        fallback_llm_with_tools,
+        max_retries: int = 3,
+        min_wait_seconds: float = 1.0,
+        max_wait_seconds: float = 10.0,
+    ):
+        self.primary_llm = primary_llm_with_tools
+        self.fallback_llm = fallback_llm_with_tools
+        self.max_retries = max_retries
+        self.min_wait = min_wait_seconds
+        self.max_wait = max_wait_seconds
+        self._using_fallback = False
+
+    def invoke(self, messages: list[BaseMessage]) -> BaseMessage:
+        """
+        Invoke LLM with retry and fallback logic.
+
+        Flow:
+        1. Try primary model
+        2. On retryable error, retry up to max_retries times with exponential backoff
+        3. After retries exhausted or on fallback-triggering error, use fallback model
+        """
+        self._using_fallback = False
+
+        try:
+            return self._invoke_with_retry(messages)
+        except Exception as primary_error:
+            logger.warning(
+                "Primary model failed after retries: %s. Falling back to secondary model.",
+                str(primary_error),
+            )
+            return self._invoke_fallback(messages, primary_error)
+
+    def _invoke_with_retry(self, messages: list[BaseMessage]) -> BaseMessage:
+        """Invoke primary model with retry logic."""
+
+        @retry(
+            retry=retry_if_exception(is_retryable_error),
+            stop=stop_after_attempt(self.max_retries),
+            wait=wait_exponential(multiplier=1, min=self.min_wait, max=self.max_wait),
+            reraise=True,
+        )
+        def _invoke():
+            return self.primary_llm.invoke(messages)
+
+        return _invoke()
+
+    def _invoke_fallback(
+        self, messages: list[BaseMessage], original_error: Exception
+    ) -> BaseMessage:
+        """Invoke fallback model."""
+        self._using_fallback = True
+        logger.info(
+            "Using fallback model due to primary model failure: %s",
+            str(original_error),
+        )
+
+        try:
+            response = self.fallback_llm.invoke(messages)
+            logger.info("Fallback model invocation successful")
+            return response
+        except Exception as fallback_error:
+            logger.error(
+                "Fallback model also failed: %s. Original error: %s",
+                str(fallback_error),
+                str(original_error),
+            )
+            raise RuntimeError(
+                f"Both primary and fallback models failed. "
+                f"Primary error: {original_error}. "
+                f"Fallback error: {fallback_error}"
+            ) from fallback_error
+
+    @property
+    def using_fallback(self) -> bool:
+        """Returns True if the last invocation used the fallback model."""
+        return self._using_fallback
 
 
 def fetch_tavily_api_key() -> str | None:
@@ -84,17 +210,36 @@ if not os.environ.get("TAVILY_API_KEY"):
 else:
     logger.info("Using TAVILY_API_KEY from environment variable")
 
-# Initialize the LLM with Bedrock
-logger.info("Initializing LLM with model: %s", MODEL_ID)
-llm = init_chat_model(
+# Initialize the primary LLM with Bedrock
+logger.info("Initializing primary LLM with model: %s", MODEL_ID)
+llm_primary = init_chat_model(
     MODEL_ID,
+    model_provider="bedrock_converse",
+)
+
+# Initialize the fallback LLM with Bedrock
+logger.info("Initializing fallback LLM with model: %s", FALLBACK_MODEL_ID)
+llm_fallback = init_chat_model(
+    FALLBACK_MODEL_ID,
     model_provider="bedrock_converse",
 )
 
 # Define search tool
 search = TavilySearchResults(max_results=3)
 tools = [search]
-llm_with_tools = llm.bind_tools(tools)
+
+# Bind tools to both models
+llm_primary_with_tools = llm_primary.bind_tools(tools)
+llm_fallback_with_tools = llm_fallback.bind_tools(tools)
+
+# Create resilient invoker with retry and fallback
+resilient_llm = ResilientLLMInvoker(
+    primary_llm_with_tools=llm_primary_with_tools,
+    fallback_llm_with_tools=llm_fallback_with_tools,
+    max_retries=3,
+    min_wait_seconds=1.0,
+    max_wait_seconds=10.0,
+)
 
 
 # Define state
@@ -108,6 +253,9 @@ def chatbot(state: State) -> dict[str, list[BaseMessage]]:
     """
     Chatbot node that invokes the LLM with tools.
 
+    Uses ResilientLLMInvoker for automatic retry with exponential backoff
+    and fallback to secondary model on failure.
+
     Args:
         state: Current state containing message history.
 
@@ -115,7 +263,9 @@ def chatbot(state: State) -> dict[str, list[BaseMessage]]:
         Dictionary with updated messages list.
     """
     logger.info("Chatbot node invoked with %d messages", len(state["messages"]))
-    response = llm_with_tools.invoke(state["messages"])
+    response = resilient_llm.invoke(state["messages"])
+    if resilient_llm.using_fallback:
+        logger.info("Response generated using fallback model")
     logger.info("LLM response received, has tool calls: %s", bool(response.tool_calls))
     return {"messages": [response]}
 

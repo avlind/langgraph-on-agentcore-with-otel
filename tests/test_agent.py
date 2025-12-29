@@ -145,6 +145,17 @@ class TestExceptionClassification:
         assert is_retryable_error(error) is False
         assert should_fallback(error) is True
 
+    def test_quota_exceeded_triggers_fallback(self):
+        """Test ServiceQuotaExceededException triggers immediate fallback."""
+        from langgraph_agent_web_search import is_retryable_error, should_fallback
+
+        error = ClientError(
+            {"Error": {"Code": "ServiceQuotaExceededException", "Message": "Quota exceeded"}},
+            "InvokeModel",
+        )
+        assert is_retryable_error(error) is False
+        assert should_fallback(error) is True
+
     def test_access_denied_not_retryable(self):
         """Test AccessDeniedException doesn't retry or fallback."""
         from langgraph_agent_web_search import is_retryable_error, should_fallback

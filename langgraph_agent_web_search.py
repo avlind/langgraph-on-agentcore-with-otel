@@ -62,6 +62,7 @@ FALLBACK_ERROR_CODES = {
     "ModelStreamErrorException",
     "ModelTimeoutException",
     "ModelErrorException",
+    "ServiceQuotaExceededException",  # Quota exhausted, fallback immediately
 }
 
 

@@ -519,6 +519,19 @@ FALLBACK_MODEL_ID=global.anthropic.claude-sonnet-4-5-20250929-v1:0
 - If retries are exhausted, it automatically falls back to the secondary model
 - Both models have the same tools bound for consistent behavior
 
+**Error Handling Strategy:**
+
+| Error Type | Behavior | Rationale |
+|------------|----------|-----------|
+| `ThrottlingException` | Retry 3x with backoff | Temporary rate limit, may clear |
+| `ServiceUnavailable` | Retry 3x with backoff | Transient service issue |
+| `InternalFailure` | Retry 3x with backoff | Transient server error |
+| `ServiceQuotaExceededException` | Immediate fallback | Quota exhausted, won't recover soon |
+| `ModelNotReadyException` | Immediate fallback | Model unavailable in region |
+| `ModelTimeoutException` | Immediate fallback | Model overloaded |
+| `AccessDeniedException` | Fail (no fallback) | IAM issue, fallback would fail too |
+| `ValidationException` | Fail (no fallback) | Bad input, would fail on any model |
+
 ### Adjusting Search Results
 
 Modify `max_results` in `langgraph_agent_web_search.py`:

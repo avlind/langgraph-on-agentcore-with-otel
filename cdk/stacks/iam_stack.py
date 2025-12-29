@@ -27,6 +27,7 @@ class IamPolicyStack(Stack):
         )
 
         # Create inline policy for Secrets Manager access
+        # Use exact secret ARN (no wildcard) for least privilege
         secrets_policy = iam.Policy(
             self,
             "SecretsManagerAccess",
@@ -35,7 +36,7 @@ class IamPolicyStack(Stack):
                 iam.PolicyStatement(
                     effect=iam.Effect.ALLOW,
                     actions=["secretsmanager:GetSecretValue"],
-                    resources=[f"{secret_arn}*"],
+                    resources=[secret_arn],
                 )
             ],
         )

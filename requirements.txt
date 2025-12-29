@@ -20,3 +20,7 @@ aws-opentelemetry-distro~=0.12.2
 # CDK for infrastructure management
 aws-cdk-lib~=2.233.0
 constructs~=10.4.4
+
+# Testing
+pytest~=9.0.2
+pytest-cov~=7.0.0

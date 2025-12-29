@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+set -o pipefail
 
 # Color codes for output
 RED='\033[0;31m'
@@ -24,6 +25,12 @@ print_warning() {
 print_error() {
     echo -e "   ${RED}✗${NC} $1"
 }
+
+# Cleanup function for partial failures
+cleanup_on_failure() {
+    print_error "Deployment failed. You may need to run ./destroy.sh to clean up partial resources."
+}
+trap cleanup_on_failure ERR
 
 # Parse arguments
 AWS_PROFILE_ARG=""
@@ -71,10 +78,32 @@ MODEL_ID="${MODEL_ID:-global.anthropic.claude-haiku-4-5-20251001-v1:0}"
 SECRET_NAME="${SECRET_NAME:-langgraph-agent/tavily-api-key}"
 
 # Validate required variables
-if [ -z "$TAVILY_API_KEY" ]; then
-    print_error "TAVILY_API_KEY is not set in .env file"
-    exit 1
-fi
+validate_config() {
+    local errors=0
+
+    if [ -z "$TAVILY_API_KEY" ]; then
+        print_error "TAVILY_API_KEY is not set in .env file"
+        errors=$((errors + 1))
+    fi
+
+    # Validate AWS_REGION format (e.g., us-east-2, eu-west-1)
+    if ! [[ "$AWS_REGION" =~ ^[a-z]{2}-[a-z]+-[0-9]+$ ]]; then
+        print_error "Invalid AWS_REGION format: $AWS_REGION (expected format: us-east-2)"
+        errors=$((errors + 1))
+    fi
+
+    # Validate AGENT_NAME (alphanumeric and underscores only)
+    if ! [[ "$AGENT_NAME" =~ ^[a-zA-Z0-9_]+$ ]]; then
+        print_error "Invalid AGENT_NAME: $AGENT_NAME (use only alphanumeric and underscores)"
+        errors=$((errors + 1))
+    fi
+
+    if [ $errors -gt 0 ]; then
+        exit 1
+    fi
+}
+
+validate_config
 
 # Check if agentcore CLI is available
 if ! command -v agentcore &> /dev/null; then
@@ -120,10 +149,10 @@ if [[ "$BOOTSTRAP_CHECK" == "NOT_FOUND" ]]; then
     echo ""
     echo "   Bootstrapping CDK (one-time setup)..."
     ACCOUNT_ID=$($AWS_CMD sts get-caller-identity --query Account --output text)
-    cdk bootstrap "aws://$ACCOUNT_ID/$AWS_REGION" || {
+    if ! cdk bootstrap "aws://$ACCOUNT_ID/$AWS_REGION"; then
         print_error "CDK bootstrap failed"
         exit 1
-    }
+    fi
     print_success "CDK bootstrapped successfully"
 fi
 
@@ -150,25 +179,40 @@ fi
 print_step "1/5" "Deploying Secrets Manager secret (CDK)..."
 
 cd cdk
+# Run CDK deploy and capture exit code (don't use pipefail for CDK output)
+set +o pipefail
 cdk deploy SecretsStack \
     --context secret_name="$SECRET_NAME" \
     --context tavily_api_key="$TAVILY_API_KEY" \
     --require-approval never \
-    --outputs-file cdk-outputs.json \
-    2>&1 | grep -v "^$" || true
+    --outputs-file cdk-outputs.json 2>&1 | grep -v "^$" || true
+CDK_EXIT=${PIPESTATUS[0]}
+set -o pipefail
 cd ..
+
+# Verify SecretsStack deployment succeeded
+if [ "$CDK_EXIT" -ne 0 ] || ! $AWS_CMD cloudformation describe-stacks \
+    --stack-name SecretsStack \
+    --region "$AWS_REGION" &>/dev/null; then
+    print_error "SecretsStack deployment failed"
+    exit 1
+fi
 
 print_success "Secret deployed via CDK"
 
 # Step 2: Configure agent
 print_step "2/5" "Configuring agent..."
 
-eval $AGENTCORE_PREFIX agentcore configure \
+CONFIGURE_OUTPUT=$(eval $AGENTCORE_PREFIX agentcore configure \
     -e langgraph_agent_web_search.py \
     -n "$AGENT_NAME" \
     -dt container \
     -r "$AWS_REGION" \
-    --non-interactive > /dev/null 2>&1
+    --non-interactive 2>&1) || {
+    print_error "Agent configuration failed"
+    echo "$CONFIGURE_OUTPUT"
+    exit 1
+}
 
 print_success "Agent configured for container deployment"
 
@@ -187,6 +231,11 @@ print_success "Deployment complete"
 # Step 4: Extract execution role ARN
 print_step "4/5" "Extracting execution role ARN..."
 
+if [ ! -f .bedrock_agentcore.yaml ]; then
+    print_error ".bedrock_agentcore.yaml not found after deployment"
+    exit 1
+fi
+
 ROLE_ARN=$(awk -v agent="$AGENT_NAME" '
     $0 ~ "^  " agent ":" { in_agent=1 }
     in_agent && /execution_role:.*Runtime/ { print $2; exit }
@@ -194,6 +243,7 @@ ROLE_ARN=$(awk -v agent="$AGENT_NAME" '
 
 if [ -z "$ROLE_ARN" ]; then
     print_error "Could not extract execution role ARN from .bedrock_agentcore.yaml"
+    echo "   Check that agent '$AGENT_NAME' exists in the config file"
     exit 1
 fi
 
@@ -217,14 +267,28 @@ print_success "Found secret: $SECRET_ARN"
 print_step "5/5" "Granting IAM permissions (CDK)..."
 
 cd cdk
+# Run CDK deploy and capture exit code (don't use pipefail for CDK output)
+set +o pipefail
 cdk deploy IamPolicyStack \
     --context execution_role_arn="$ROLE_ARN" \
     --context secret_arn="$SECRET_ARN" \
-    --require-approval never \
-    2>&1 | grep -v "^$" || true
+    --require-approval never 2>&1 | grep -v "^$" || true
+CDK_EXIT=${PIPESTATUS[0]}
+set -o pipefail
 cd ..
 
+# Verify IamPolicyStack deployment succeeded
+if [ "$CDK_EXIT" -ne 0 ] || ! $AWS_CMD cloudformation describe-stacks \
+    --stack-name IamPolicyStack \
+    --region "$AWS_REGION" &>/dev/null; then
+    print_error "IamPolicyStack deployment failed"
+    exit 1
+fi
+
 print_success "IAM policy attached via CDK"
+
+# Clear the error trap on success
+trap - ERR
 
 # Success message
 echo ""

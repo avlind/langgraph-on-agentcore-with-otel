@@ -109,15 +109,15 @@ validate_config
 if ! command -v agentcore &> /dev/null; then
     print_error "agentcore command not found."
     echo ""
-    echo "   The virtual environment may not be activated. Run:"
+    echo "   Run this script via uv or make:"
     echo ""
-    echo "      source .venv/bin/activate"
+    echo "      uv run ./deploy.sh --profile YourProfile"
+    echo "      # or"
+    echo "      make deploy PROFILE=YourProfile"
     echo ""
-    echo "   Or if you haven't installed dependencies yet:"
+    echo "   If dependencies aren't installed yet:"
     echo ""
-    echo "      python3 -m venv .venv"
-    echo "      source .venv/bin/activate"
-    echo "      pip install -r requirements.txt"
+    echo "      uv sync"
     echo ""
     exit 1
 fi

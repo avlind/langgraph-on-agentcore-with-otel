@@ -28,7 +28,6 @@ Usage:
 import os
 
 import aws_cdk as cdk
-
 from stacks import (
     CONTEXT_EXECUTION_ROLE_ARN,
     CONTEXT_SECRET_ARN,

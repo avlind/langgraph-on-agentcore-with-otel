@@ -39,6 +39,7 @@ The agent uses a simple ReAct-style graph:
 - **AWS CLI** configured (either default credentials or a named profile)
 - **AWS CDK CLI** - Install with `npm install -g aws-cdk`
 - **Python 3.13+**
+- **uv** - Fast Python package manager. Install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - **Node.js** (for CDK CLI)
 - **Tavily API Key** - Get one at <https://tavily.com>
 
@@ -56,18 +57,19 @@ git clone <repository-url>
 cd langgraph-to-agentcore-sample
 ```
 
-### 2. Create Python Virtual Environment
+### 2. Install Dependencies
+
+This project uses [uv](https://docs.astral.sh/uv/) for fast, reliable dependency management.
 
 ```bash
-# Option A: Using Makefile (recommended)
+# Using Makefile (recommended)
 make setup
-source .venv/bin/activate
 
-# Option B: Manual setup
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+# Or using uv directly
+uv sync
 ```
+
+> **Note:** No need to manually activate a virtual environment. Use `uv run <command>` or `make <target>` to run commands with the correct environment.
 
 ### 3. Configure Environment Variables
 
@@ -113,11 +115,12 @@ aws sts get-caller-identity
 Before deploying, run the test suite to verify everything works:
 
 ```bash
-# Run all tests
-make test
+# Using Makefile (recommended)
+make test          # Run all tests
+make test-cov      # Run with coverage report
 
-# Run with coverage report
-make test-cov
+# Or using uv directly
+uv run pytest tests/ -v
 ```
 
 The test suite includes:
@@ -130,20 +133,14 @@ The test suite includes:
 
 The `deploy.sh` script is **required** for deployment because it passes runtime environment variables to the AgentCore container via `--env` flags. Without this step, the agent would use hardcoded defaults instead of your `.env` configuration.
 
-> **Important:** Make sure your virtual environment is activated before running the scripts:
->
-> ```bash
-> source .venv/bin/activate
-> ```
-
 ```bash
 # Using Makefile (recommended)
 make deploy                          # Default credentials
 make deploy PROFILE=YourProfileName  # Named profile (SSO users)
 
-# Or using the script directly
-./deploy.sh                          # Default credentials
-./deploy.sh --profile YourProfileName # Named profile (SSO users)
+# Or using uv directly
+uv run ./deploy.sh                          # Default credentials
+uv run ./deploy.sh --profile YourProfileName # Named profile (SSO users)
 ```
 
 **What the script does:**
@@ -192,7 +189,7 @@ aws secretsmanager create-secret \
 
 ```bash
 # Using default credentials
-agentcore configure \
+uv run agentcore configure \
   -e langgraph_agent_web_search.py \
   -n langgraph_agent_web_search \
   -dt container \
@@ -200,7 +197,7 @@ agentcore configure \
   --non-interactive
 
 # Using a named profile
-AWS_PROFILE=YourProfileName agentcore configure \
+AWS_PROFILE=YourProfileName uv run agentcore configure \
   -e langgraph_agent_web_search.py \
   -n langgraph_agent_web_search \
   -dt container \
@@ -226,13 +223,13 @@ Pass environment variables via `--env` flags:
 
 ```bash
 # Using default credentials
-agentcore deploy \
+uv run agentcore deploy \
   --env "AWS_REGION=<your-region>" \
   --env "SECRET_NAME=langgraph-agent/tavily-api-key" \
   --env "MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 # Using a named profile
-AWS_PROFILE=YourProfileName agentcore deploy \
+AWS_PROFILE=YourProfileName uv run agentcore deploy \
   --env "AWS_REGION=<your-region>" \
   --env "SECRET_NAME=langgraph-agent/tavily-api-key" \
   --env "MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0"
@@ -280,53 +277,39 @@ aws iam put-role-policy \
 
 </details>
 
-## Testing
+## Testing the Deployed Agent
 
 ### Invoke the Agent
 
 ```bash
-# Using default credentials
-agentcore invoke '{"prompt": "Search for AWS news today"}'
+# Using Makefile (recommended)
+make invoke PROFILE=YourProfileName
 
-# Using a named profile
-AWS_PROFILE=YourProfileName agentcore invoke '{"prompt": "Search for AWS news today"}'
+# Using uv directly
+uv run agentcore invoke '{"prompt": "Search for AWS news today"}'
+AWS_PROFILE=YourProfileName uv run agentcore invoke '{"prompt": "Search for AWS news today"}'
 ```
 
 ### View Logs
 
 ```bash
-# Using default credentials
-agentcore logs --follow
+# Using Makefile
+make logs PROFILE=YourProfileName
 
-# Using a named profile
-AWS_PROFILE=YourProfileName agentcore logs --follow
-```
-
-Or use AWS CLI directly:
-
-```bash
-# Using default credentials
-aws logs tail /aws/bedrock-agentcore/runtimes/<agent-id>-DEFAULT \
-  --log-stream-name-prefix "$(date +%Y/%m/%d)/[runtime-logs]" \
-  --follow \
-  --region <your-region>
-
-# Using a named profile
-aws logs tail /aws/bedrock-agentcore/runtimes/<agent-id>-DEFAULT \
-  --log-stream-name-prefix "$(date +%Y/%m/%d)/[runtime-logs]" \
-  --follow \
-  --region <your-region> \
-  --profile YourProfileName
+# Using uv directly
+uv run agentcore logs --follow
+AWS_PROFILE=YourProfileName uv run agentcore logs --follow
 ```
 
 ### Check Agent Status
 
 ```bash
-# Using default credentials
-agentcore status
+# Using Makefile
+make status PROFILE=YourProfileName
 
-# Using a named profile
-AWS_PROFILE=YourProfileName agentcore status
+# Using uv directly
+uv run agentcore status
+AWS_PROFILE=YourProfileName uv run agentcore status
 ```
 
 ## Observability
@@ -342,21 +325,19 @@ This project uses OpenTelemetry instrumentation to capture LangChain traces. The
 List recent traces:
 
 ```bash
-# Using default credentials
-agentcore obs list
+# Using Makefile
+make traces PROFILE=YourProfileName
 
-# Using a named profile
-AWS_PROFILE=YourProfileName agentcore obs list
+# Using uv directly
+uv run agentcore obs list
+AWS_PROFILE=YourProfileName uv run agentcore obs list
 ```
 
 Show detailed trace with timing:
 
 ```bash
-# Using default credentials
-agentcore obs show --last 1 --verbose
-
-# Using a named profile
-AWS_PROFILE=YourProfileName agentcore obs show --last 1 --verbose
+uv run agentcore obs show --last 1 --verbose
+AWS_PROFILE=YourProfileName uv run agentcore obs show --last 1 --verbose
 ```
 
 Example output:
@@ -387,7 +368,8 @@ https://console.aws.amazon.com/cloudwatch/home?region=<your-region>#gen-ai-obser
 ├── deploy.sh                      # One-command deployment script
 ├── destroy.sh                     # Cleanup script
 ├── Makefile                       # Common development commands
-├── requirements.txt               # Python dependencies
+├── pyproject.toml                 # Project metadata and dependencies
+├── uv.lock                        # Locked dependencies (uv)
 ├── .env.sample                    # Environment variable template
 ├── .env                           # Local environment variables (gitignored)
 ├── .gitignore                     # Git ignore rules
@@ -427,16 +409,16 @@ https://console.aws.amazon.com/cloudwatch/home?region=<your-region>#gen-ai-obser
 
 ## Makefile Commands
 
-A Makefile is provided for common operations. Run `make help` to see all available targets.
+A Makefile is provided for common operations. Run `make help` to see all available targets. All commands use `uv` under the hood.
 
 ### Setup & Testing
 
 ```bash
-make setup         # Create venv and install dependencies
+make setup         # Install dependencies with uv sync
 make test          # Run all tests
 make test-cov      # Run tests with coverage report
-make lint          # Run linters (ruff and black)
-make format        # Format code with black
+make lint          # Run linter and format check (ruff)
+make format        # Format code and fix lint issues (ruff)
 ```
 
 ### Deployment & Operations
@@ -473,7 +455,7 @@ To add a new tool to the agent:
 1. **Install the tool package** (if needed):
 
    ```bash
-   pip install langchain-some-tool
+   uv add langchain-some-tool
    ```
 
 2. **Import and configure the tool** in `langgraph_agent_web_search.py`:
@@ -489,7 +471,7 @@ To add a new tool to the agent:
 3. **Redeploy**:
 
    ```bash
-   ./deploy.sh --profile YourProfile
+   make deploy PROFILE=YourProfile
    ```
 
 ### Changing the LLM Model
@@ -593,11 +575,17 @@ make destroy-all PROFILE=YourProfile # Destroy everything
 
 ### "agentcore command not found"
 
-The virtual environment is not activated. Run:
+Use `uv run` or `make` to run commands with the correct environment:
 
 ```bash
-source .venv/bin/activate
+# Using make (recommended)
+make status PROFILE=YourProfile
+
+# Or using uv directly
+uv run agentcore status
 ```
+
+If dependencies aren't installed, run `uv sync` first.
 
 ### Agent fails to start with "TAVILY_API_KEY not found"
 
@@ -617,11 +605,8 @@ Ensure:
 Check CodeBuild logs in the AWS Console or run:
 
 ```bash
-# Using default credentials
-agentcore logs --build
-
-# Using a named profile
-AWS_PROFILE=YourProfileName agentcore logs --build
+uv run agentcore logs --build
+AWS_PROFILE=YourProfileName uv run agentcore logs --build
 ```
 
 ### CDK deployment fails
@@ -638,3 +623,4 @@ If you see CDK-related errors:
 - [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
 - [Tavily API](https://tavily.com)
 - [AWS Bedrock AgentCore Samples](https://github.com/awslabs/amazon-bedrock-agentcore-samples)
+- [uv - Fast Python Package Manager](https://docs.astral.sh/uv/)

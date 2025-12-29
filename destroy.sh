@@ -94,9 +94,11 @@ SECRET_NAME="${SECRET_NAME:-langgraph-agent/tavily-api-key}"
 if ! command -v agentcore &> /dev/null; then
     print_error "agentcore command not found."
     echo ""
-    echo "   The virtual environment may not be activated. Run:"
+    echo "   Run this script via uv or make:"
     echo ""
-    echo "      source .venv/bin/activate"
+    echo "      uv run ./destroy.sh --profile YourProfile"
+    echo "      # or"
+    echo "      make destroy PROFILE=YourProfile"
     echo ""
     exit 1
 fi

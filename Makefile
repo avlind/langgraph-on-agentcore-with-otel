@@ -1,5 +1,6 @@
 # Makefile for LangGraph AgentCore project
 # Run 'make help' to see available targets
+# Uses uv for dependency management
 
 .PHONY: help setup test lint deploy destroy clean status logs invoke
 
@@ -22,50 +23,51 @@ help: ## Show this help message
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@echo ""
 	@echo "Examples:"
-	@echo "  make setup                    # Create venv and install deps"
+	@echo "  make setup                    # Install dependencies with uv"
 	@echo "  make test                     # Run all tests"
 	@echo "  make deploy PROFILE=PowerUser # Deploy with AWS profile"
 	@echo "  make invoke PROFILE=PowerUser # Test the deployed agent"
 
-setup: ## Create virtual environment and install dependencies
-	python3 -m venv .venv
-	. .venv/bin/activate && pip install -r requirements.txt
+setup: ## Install dependencies with uv
+	uv sync
 	@echo ""
-	@echo "Setup complete. Run: source .venv/bin/activate"
+	@echo "Setup complete. Dependencies installed."
+	@echo "Use 'uv run <command>' or 'make <target>' to run commands."
 
 test: ## Run all tests
-	. .venv/bin/activate && pytest tests/ -v
+	uv run pytest tests/ -v
 
 test-cov: ## Run tests with coverage report
-	. .venv/bin/activate && pytest tests/ -v --cov=. --cov-report=term-missing
+	uv run pytest tests/ -v --cov=. --cov-report=term-missing
 
-lint: ## Run linters (requires ruff and black)
-	. .venv/bin/activate && ruff check langgraph_agent_web_search.py cdk/
-	. .venv/bin/activate && black --check langgraph_agent_web_search.py cdk/
+lint: ## Run linter and format check (ruff)
+	uv run ruff check langgraph_agent_web_search.py cdk/
+	uv run ruff format --check langgraph_agent_web_search.py cdk/
 
-format: ## Format code with black
-	. .venv/bin/activate && black langgraph_agent_web_search.py cdk/
+format: ## Format code and fix lint issues (ruff)
+	uv run ruff check --fix langgraph_agent_web_search.py cdk/
+	uv run ruff format langgraph_agent_web_search.py cdk/
 
 deploy: ## Deploy agent to AWS (use PROFILE=name for SSO)
-	. .venv/bin/activate && ./deploy.sh $(PROFILE_ARG)
+	uv run ./deploy.sh $(PROFILE_ARG)
 
 destroy: ## Destroy agent only (keeps secret and ECR)
-	. .venv/bin/activate && ./destroy.sh $(PROFILE_ARG)
+	uv run ./destroy.sh $(PROFILE_ARG)
 
 destroy-all: ## Destroy all resources including secret and ECR
-	. .venv/bin/activate && ./destroy.sh $(PROFILE_ARG) --all
+	uv run ./destroy.sh $(PROFILE_ARG) --all
 
 status: ## Check agent status
-	. .venv/bin/activate && $(AWS_PROFILE_PREFIX) agentcore status
+	$(AWS_PROFILE_PREFIX) uv run agentcore status
 
 logs: ## Tail agent logs
-	. .venv/bin/activate && $(AWS_PROFILE_PREFIX) agentcore logs --follow
+	$(AWS_PROFILE_PREFIX) uv run agentcore logs --follow
 
 traces: ## List recent traces
-	. .venv/bin/activate && $(AWS_PROFILE_PREFIX) agentcore obs list
+	$(AWS_PROFILE_PREFIX) uv run agentcore obs list
 
 invoke: ## Test the deployed agent
-	. .venv/bin/activate && $(AWS_PROFILE_PREFIX) agentcore invoke '{"prompt": "What is the weather in Seattle?"}'
+	$(AWS_PROFILE_PREFIX) uv run agentcore invoke '{"prompt": "What is the weather in Seattle?"}'
 
 clean: ## Remove build artifacts and cache files
 	rm -rf .pytest_cache

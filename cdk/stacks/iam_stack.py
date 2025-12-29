@@ -20,9 +20,7 @@ from constructs import Construct
 from .constants import SECRETS_MANAGER_POLICY_NAME
 
 # Regex pattern for validating IAM role ARNs
-IAM_ROLE_ARN_PATTERN = re.compile(
-    r"^arn:aws:iam::\d{12}:role/[\w+=,.@-]+$"
-)
+IAM_ROLE_ARN_PATTERN = re.compile(r"^arn:aws:iam::\d{12}:role/[\w+=,.@-]+$")
 
 # Regex pattern for validating Secrets Manager ARNs
 SECRETS_MANAGER_ARN_PATTERN = re.compile(
@@ -69,16 +67,12 @@ class IamPolicyStack(Stack):
         if not execution_role_arn:
             raise ValueError("execution_role_arn cannot be empty")
         if not IAM_ROLE_ARN_PATTERN.match(execution_role_arn):
-            raise ValueError(
-                f"Invalid IAM role ARN format: {execution_role_arn}"
-            )
+            raise ValueError(f"Invalid IAM role ARN format: {execution_role_arn}")
 
         if not secret_arn:
             raise ValueError("secret_arn cannot be empty")
         if not SECRETS_MANAGER_ARN_PATTERN.match(secret_arn):
-            raise ValueError(
-                f"Invalid Secrets Manager ARN format: {secret_arn}"
-            )
+            raise ValueError(f"Invalid Secrets Manager ARN format: {secret_arn}")
 
         # Import the existing execution role created by agentcore
         execution_role = iam.Role.from_role_arn(

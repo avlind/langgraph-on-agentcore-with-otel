@@ -60,15 +60,11 @@ def fetch_tavily_api_key() -> str | None:
         if error_code == "ResourceNotFoundException":
             logger.error("Secret '%s' not found in Secrets Manager", SECRET_NAME)
         elif error_code == "AccessDeniedException":
-            logger.error(
-                "Access denied to secret '%s'. Check IAM permissions.", SECRET_NAME
-            )
+            logger.error("Access denied to secret '%s'. Check IAM permissions.", SECRET_NAME)
         elif error_code == "InvalidRequestException":
             logger.error("Invalid request for secret '%s': %s", SECRET_NAME, e)
         else:
-            logger.error(
-                "Failed to fetch secret '%s': %s - %s", SECRET_NAME, error_code, e
-            )
+            logger.error("Failed to fetch secret '%s': %s - %s", SECRET_NAME, error_code, e)
         return None
     except Exception as e:
         logger.error("Unexpected error fetching secret '%s': %s", SECRET_NAME, e)
@@ -160,9 +156,7 @@ def agent_invocation(payload: dict[str, Any], context: Any) -> dict[str, str]:
 
     logger.info("Agent invocation started with prompt length: %d", len(prompt))
 
-    input_state: State = {
-        "messages": [{"role": "user", "content": prompt}]
-    }
+    input_state: State = {"messages": [{"role": "user", "content": prompt}]}
 
     try:
         output = graph.invoke(input_state)

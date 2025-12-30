@@ -27,6 +27,7 @@ make destroy-all PROFILE=YourProfileName
 
 # Test the deployed agent
 make invoke PROFILE=YourProfileName
+make invoke PROFILE=YourProfileName PROMPT="Search for AWS news"
 
 # View agent status
 make status PROFILE=YourProfileName
@@ -67,7 +68,7 @@ The agent is a ReAct-style graph in `langgraph_agent_web_search.py`:
 - **Environment variables**: `scripts/deploy.py` passes `AWS_REGION`, `SECRET_NAME`, `MODEL_ID` to the container runtime via `agentcore deploy --env` flags
 - **Deployment scripts**: Python scripts in `scripts/` directory using Typer CLI framework (replaced shell scripts)
 - **Container deployment**: Required for OpenTelemetry instrumentation - the Dockerfile uses `opentelemetry-instrument` wrapper
-- **Two-phase CDK deployment**: SecretsStack deploys before agentcore, IamPolicyStack deploys after (needs execution role ARN)
+- **6-step deployment**: (1) CDK SecretsStack, (2) agentcore configure, (3) agentcore deploy, (4) extract role ARN, (5) CDK IamPolicyStack, (6) restart containers to apply IAM permissions
 - **Linting/Formatting**: Uses ruff for both linting and formatting
 
 ## CDK Stacks

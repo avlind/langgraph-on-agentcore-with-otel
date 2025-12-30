@@ -105,7 +105,7 @@ class TestExceptionClassification:
 
     def test_throttling_is_retryable(self):
         """Test ThrottlingException triggers retry."""
-        from langgraph_agent_web_search import is_retryable_error, should_fallback
+        from resilience import is_retryable_error, should_fallback
 
         error = ClientError(
             {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},
@@ -116,7 +116,7 @@ class TestExceptionClassification:
 
     def test_service_unavailable_is_retryable(self):
         """Test ServiceUnavailable triggers retry."""
-        from langgraph_agent_web_search import is_retryable_error
+        from resilience import is_retryable_error
 
         error = ClientError(
             {"Error": {"Code": "ServiceUnavailable", "Message": "Service unavailable"}},
@@ -126,7 +126,7 @@ class TestExceptionClassification:
 
     def test_internal_failure_is_retryable(self):
         """Test InternalFailure triggers retry."""
-        from langgraph_agent_web_search import is_retryable_error
+        from resilience import is_retryable_error
 
         error = ClientError(
             {"Error": {"Code": "InternalFailure", "Message": "Internal error"}},
@@ -136,7 +136,7 @@ class TestExceptionClassification:
 
     def test_model_not_ready_triggers_fallback(self):
         """Test ModelNotReadyException triggers fallback."""
-        from langgraph_agent_web_search import is_retryable_error, should_fallback
+        from resilience import is_retryable_error, should_fallback
 
         error = ClientError(
             {"Error": {"Code": "ModelNotReadyException", "Message": "Model not ready"}},
@@ -147,7 +147,7 @@ class TestExceptionClassification:
 
     def test_quota_exceeded_triggers_fallback(self):
         """Test ServiceQuotaExceededException triggers immediate fallback."""
-        from langgraph_agent_web_search import is_retryable_error, should_fallback
+        from resilience import is_retryable_error, should_fallback
 
         error = ClientError(
             {"Error": {"Code": "ServiceQuotaExceededException", "Message": "Quota exceeded"}},
@@ -158,7 +158,7 @@ class TestExceptionClassification:
 
     def test_access_denied_not_retryable(self):
         """Test AccessDeniedException doesn't retry or fallback."""
-        from langgraph_agent_web_search import is_retryable_error, should_fallback
+        from resilience import is_retryable_error, should_fallback
 
         error = ClientError(
             {"Error": {"Code": "AccessDeniedException", "Message": "Access denied"}},
@@ -169,7 +169,7 @@ class TestExceptionClassification:
 
     def test_validation_error_not_retryable(self):
         """Test ValidationError doesn't retry or fallback."""
-        from langgraph_agent_web_search import is_retryable_error, should_fallback
+        from resilience import is_retryable_error, should_fallback
 
         error = ClientError(
             {"Error": {"Code": "ValidationError", "Message": "Invalid input"}},
@@ -180,7 +180,7 @@ class TestExceptionClassification:
 
     def test_non_client_error_not_retryable(self):
         """Test non-ClientError exceptions are not retryable."""
-        from langgraph_agent_web_search import is_retryable_error, should_fallback
+        from resilience import is_retryable_error, should_fallback
 
         error = ValueError("Some other error")
         assert is_retryable_error(error) is False
@@ -192,7 +192,7 @@ class TestResilientLLMInvoker:
 
     def test_successful_primary_invocation(self, mock_llm_response):
         """Test primary model succeeds on first try."""
-        from langgraph_agent_web_search import ResilientLLMInvoker
+        from resilience import ResilientLLMInvoker
 
         mock_primary = MagicMock()
         mock_primary.invoke.return_value = mock_llm_response
@@ -208,7 +208,7 @@ class TestResilientLLMInvoker:
 
     def test_fallback_on_non_retryable_error(self, mock_llm_response):
         """Test fallback is used when primary fails with non-retryable error."""
-        from langgraph_agent_web_search import ResilientLLMInvoker
+        from resilience import ResilientLLMInvoker
 
         mock_primary = MagicMock()
         mock_primary.invoke.side_effect = ValueError("Non-retryable error")
@@ -225,7 +225,7 @@ class TestResilientLLMInvoker:
 
     def test_retry_then_success(self, mock_llm_response):
         """Test retry succeeds after initial failure."""
-        from langgraph_agent_web_search import ResilientLLMInvoker
+        from resilience import ResilientLLMInvoker
 
         throttle_error = ClientError(
             {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},
@@ -247,7 +247,7 @@ class TestResilientLLMInvoker:
 
     def test_fallback_after_max_retries(self, mock_llm_response):
         """Test fallback after all retries exhausted."""
-        from langgraph_agent_web_search import ResilientLLMInvoker
+        from resilience import ResilientLLMInvoker
 
         throttle_error = ClientError(
             {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},
@@ -270,7 +270,7 @@ class TestResilientLLMInvoker:
 
     def test_both_models_fail(self):
         """Test error raised when both models fail."""
-        from langgraph_agent_web_search import ResilientLLMInvoker
+        from resilience import ResilientLLMInvoker
 
         mock_primary = MagicMock()
         mock_primary.invoke.side_effect = ValueError("Primary failed")

@@ -41,12 +41,12 @@ test-cov: ## Run tests with coverage report
 	uv run pytest --cov=. --cov-report=term-missing
 
 lint: ## Run linter and format check (ruff)
-	uv run ruff check langgraph_agent_web_search.py cdk/
-	uv run ruff format --check langgraph_agent_web_search.py cdk/
+	uv run ruff check langgraph_agent_web_search.py resilience.py cdk/
+	uv run ruff format --check langgraph_agent_web_search.py resilience.py cdk/
 
 format: ## Format code and fix lint issues (ruff)
-	uv run ruff check --fix langgraph_agent_web_search.py cdk/
-	uv run ruff format langgraph_agent_web_search.py cdk/
+	uv run ruff check --fix langgraph_agent_web_search.py resilience.py cdk/
+	uv run ruff format langgraph_agent_web_search.py resilience.py cdk/
 
 deploy: ## Deploy agent to AWS (use PROFILE=name for SSO)
 	uv run ./deploy.sh $(PROFILE_ARG)

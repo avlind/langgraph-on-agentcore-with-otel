@@ -16,6 +16,8 @@ dependencies = [
     # Tools and utilities
     "tavily-python~=0.7.17",
     "python-dotenv~=1.2.1",
+    # Retry logic
+    "tenacity~=9.0.0",
     # AWS Bedrock AgentCore runtime SDK
     "bedrock-agentcore~=1.1.1",
     # OpenTelemetry instrumentation
@@ -37,6 +39,9 @@ dev = [
     "pytest-cov~=7.0.0",
     "ruff>=0.8.0",
 ]
+
+[tool.setuptools]
+py-modules = ["langgraph_agent_web_search", "resilience"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

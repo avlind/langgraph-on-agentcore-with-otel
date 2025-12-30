@@ -152,7 +152,8 @@ uv run pytest tests/ -v
 ```
 
 The test suite includes:
-- **Agent tests** (`tests/test_agent.py`): Tests for secret fetching, payload handling, and state management
+- **Agent tests** (`tests/test_agent.py`): Tests for secret fetching, payload handling, resilience logic, and state management
+- **Agent function tests** (`tests/test_agent_functions.py`): Unit tests for agent functions including chatbot node, invocation handling, and error cases
 - **CDK tests** (`tests/test_cdk.py`): Infrastructure tests for Secrets Manager and IAM policy stacks
 
 ## Deployment
@@ -175,11 +176,12 @@ uv run python -m scripts.deploy --profile YourProfileName # Named profile (SSO u
 
 | Step | Action                                                                          |
 | ---- | ------------------------------------------------------------------------------- |
-| 1/5  | **CDK SecretsStack** - Deploys Secrets Manager secret via AWS CDK               |
-| 2/5  | **Configure** - Runs `agentcore configure` to generate Dockerfile               |
-| 3/5  | **Deploy** - Builds container via CodeBuild, passes env vars via `--env` flags  |
-| 4/5  | **Extract Role** - Gets execution role ARN from `.bedrock_agentcore.yaml`       |
-| 5/5  | **CDK IamPolicyStack** - Grants Secrets Manager access via AWS CDK              |
+| 1/6  | **CDK SecretsStack** - Deploys Secrets Manager secret via AWS CDK               |
+| 2/6  | **Configure** - Runs `agentcore configure` to generate Dockerfile               |
+| 3/6  | **Deploy** - Builds container via CodeBuild, passes env vars via `--env` flags  |
+| 4/6  | **Extract Role** - Gets execution role ARN from `.bedrock_agentcore.yaml`       |
+| 5/6  | **CDK IamPolicyStack** - Grants Secrets Manager access via AWS CDK              |
+| 6/6  | **Restart Containers** - Redeploys to apply IAM permissions to running containers |
 
 > **Infrastructure as Code:** This project uses AWS CDK to manage Secrets Manager secrets and IAM policies. CDK provides version-controlled, reviewable infrastructure that integrates with your team's workflow.
 >
@@ -311,7 +313,8 @@ aws iam put-role-policy \
 
 ```bash
 # Using Makefile (recommended)
-make invoke PROFILE=YourProfileName
+make invoke PROFILE=YourProfileName                          # Default prompt
+make invoke PROFILE=YourProfileName PROMPT="Your question"   # Custom prompt
 
 # Using uv directly
 uv run agentcore invoke '{"prompt": "Search for AWS news today"}'
@@ -320,13 +323,16 @@ AWS_PROFILE=YourProfileName uv run agentcore invoke '{"prompt": "Search for AWS 
 
 ### View Logs
 
-```bash
-# Using Makefile
-make logs PROFILE=YourProfileName
+First, get the log group from `agentcore status`, then use AWS CLI:
 
-# Using uv directly
-uv run agentcore logs --follow
-AWS_PROFILE=YourProfileName uv run agentcore logs --follow
+```bash
+# Get the log group name and tail command
+make status PROFILE=YourProfileName
+
+# Then tail logs using the log group shown in status output
+aws logs tail /aws/bedrock-agentcore/runtimes/<agent-id>-DEFAULT \
+  --log-stream-name-prefix "$(date +%Y/%m/%d)/[runtime-logs]" \
+  --follow --profile YourProfileName
 ```
 
 ### Check Agent Status
@@ -419,6 +425,7 @@ https://console.aws.amazon.com/cloudwatch/home?region=<your-region>#gen-ai-obser
 │       └── iam_stack.py           # IAM policies
 ├── tests/                         # Test suite
 │   ├── test_agent.py              # Agent unit tests
+│   ├── test_agent_functions.py    # Agent function unit tests
 │   └── test_cdk.py                # CDK infrastructure tests
 ├── .bedrock_agentcore.yaml        # Agent configuration (generated)
 └── .bedrock_agentcore/            # Build artifacts (generated)
@@ -468,10 +475,11 @@ make destroy-all PROFILE=YourProfile # Destroy all resources including secret an
 ### Runtime Commands
 
 ```bash
-make status PROFILE=YourProfile  # Check agent status
-make invoke PROFILE=YourProfile  # Test the deployed agent
-make logs PROFILE=YourProfile    # Tail agent logs
-make traces PROFILE=YourProfile  # List recent traces
+make status PROFILE=YourProfile                 # Check agent status (includes log group info)
+make invoke PROFILE=YourProfile                 # Test with default prompt
+make invoke PROFILE=YourProfile PROMPT="Hello"  # Test with custom prompt
+make logs PROFILE=YourProfile                   # Show how to tail agent logs
+make traces PROFILE=YourProfile                 # List recent traces
 ```
 
 ### Cleanup
@@ -669,12 +677,11 @@ Ensure:
 
 ### CodeBuild fails
 
-Check CodeBuild logs in the AWS Console or run:
+Check CodeBuild logs in the AWS Console:
 
-```bash
-uv run agentcore logs --build
-AWS_PROFILE=YourProfileName uv run agentcore logs --build
-```
+1. Go to **AWS CodeBuild** > **Build projects**
+2. Find the project named `bedrock-agentcore-<agent-name>-builder`
+3. Click on the failed build to view logs
 
 ### CDK deployment fails
 

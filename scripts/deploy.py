@@ -40,7 +40,7 @@ app = typer.Typer(help="Deploy LangGraph agent to AWS Bedrock AgentCore")
 
 def step_1_deploy_secrets(config: DeployConfig) -> None:
     """Deploy Secrets Manager secret via CDK."""
-    print_step("1/5", "Deploying Secrets Manager secret (CDK)...")
+    print_step("1/6", "Deploying Secrets Manager secret (CDK)...")
 
     cdk_dir = Path("cdk")
     result = run_cdk_deploy(
@@ -68,7 +68,7 @@ def step_1_deploy_secrets(config: DeployConfig) -> None:
 
 def step_2_configure_agent(config: DeployConfig) -> None:
     """Configure agent for container deployment."""
-    print_step("2/5", "Configuring agent...")
+    print_step("2/6", "Configuring agent...")
 
     result = run_agentcore_configure(
         entrypoint="langgraph_agent_web_search.py",
@@ -88,7 +88,7 @@ def step_2_configure_agent(config: DeployConfig) -> None:
 
 def step_3_deploy_agent(config: DeployConfig) -> None:
     """Deploy agent to AgentCore."""
-    print_step("3/5", "Deploying to AgentCore (this may take several minutes)...")
+    print_step("3/6", "Deploying to AgentCore (this may take several minutes)...")
 
     result = run_agentcore_deploy(
         env_vars={
@@ -109,7 +109,7 @@ def step_3_deploy_agent(config: DeployConfig) -> None:
 
 def step_4_extract_role_arn(config: DeployConfig) -> tuple[str, str]:
     """Extract execution role ARN and secret ARN."""
-    print_step("4/5", "Extracting execution role ARN...")
+    print_step("4/6", "Extracting execution role ARN...")
 
     config_path = Path(".bedrock_agentcore.yaml")
     if not config_path.exists():
@@ -141,7 +141,7 @@ def step_5_grant_permissions(
     config: DeployConfig, role_arn: str, secret_arn: str
 ) -> None:
     """Grant IAM permissions via CDK."""
-    print_step("5/5", "Granting IAM permissions (CDK)...")
+    print_step("5/6", "Granting IAM permissions (CDK)...")
 
     cdk_dir = Path("cdk")
     result = run_cdk_deploy(
@@ -167,6 +167,28 @@ def step_5_grant_permissions(
     print_success("IAM policy attached via CDK")
 
 
+def step_6_restart_containers(config: DeployConfig) -> None:
+    """Restart containers to pick up IAM permissions."""
+    print_step("6/6", "Restarting containers to apply IAM permissions...")
+
+    # Run agentcore deploy again - this triggers an update and restarts containers
+    result = run_agentcore_deploy(
+        env_vars={
+            "AWS_REGION": config.aws_region,
+            "SECRET_NAME": config.secret_name,
+            "MODEL_ID": config.model_id,
+            "FALLBACK_MODEL_ID": config.fallback_model_id,
+        },
+        profile=config.aws_profile,
+    )
+
+    if not result.success:
+        print_warning("Container restart may have failed, but IAM permissions are in place")
+        print_warning("Try invoking the agent - new containers will have correct permissions")
+    else:
+        print_success("Containers restarted with IAM permissions")
+
+
 @app.command()
 def deploy(
     profile: Annotated[
@@ -177,7 +199,7 @@ def deploy(
     """
     Deploy the LangGraph agent to AWS Bedrock AgentCore.
 
-    This command performs a 5-step deployment:
+    This command performs a 6-step deployment:
 
     1. Deploy Secrets Manager secret via CDK
 
@@ -188,6 +210,8 @@ def deploy(
     4. Extract execution role ARN
 
     5. Grant IAM permissions via CDK
+
+    6. Restart containers to apply IAM permissions
     """
     try:
         # Check required commands
@@ -225,6 +249,7 @@ def deploy(
         step_3_deploy_agent(config)
         role_arn, secret_arn = step_4_extract_role_arn(config)
         step_5_grant_permissions(config, role_arn, secret_arn)
+        step_6_restart_containers(config)
 
         # Success message
         print_final_success("Deployment successful!")

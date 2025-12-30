@@ -119,14 +119,14 @@ FALLBACK_MODEL_ID=global.anthropic.claude-sonnet-4-5-20250929-v1:0
 SECRET_NAME=langgraph-agent/tavily-api-key
 ```
 
-| Variable            | Description                                                    |
-| ------------------- | -------------------------------------------------------------- |
-| `TAVILY_API_KEY`    | Your Tavily API key (required)                                 |
-| `AWS_REGION`        | AWS region for deployment (default: `us-east-2`)               |
-| `AGENT_NAME`        | Name for your agent in AgentCore                               |
-| `MODEL_ID`          | Primary Bedrock model ID (default: Haiku)                      |
-| `FALLBACK_MODEL_ID` | Fallback model when primary is unavailable (default: Sonnet)   |
-| `SECRET_NAME`       | Name for the Secrets Manager secret                            |
+| Variable            | Description                                                              |
+| ------------------- | ------------------------------------------------------------------------ |
+| `TAVILY_API_KEY`    | Your Tavily API key (required)                                           |
+| `AWS_REGION`        | AWS region for deployment (default: `us-east-2`)                         |
+| `AGENT_NAME`        | Name for your agent in AgentCore (keep under 25 chars to avoid AWS limits) |
+| `MODEL_ID`          | Primary Bedrock model ID (default: Haiku)                                |
+| `FALLBACK_MODEL_ID` | Fallback model when primary is unavailable (default: Sonnet)             |
+| `SECRET_NAME`       | Name for the Secrets Manager secret                                      |
 
 ### 4. Ensure AWS Credentials are Active
 
@@ -690,6 +690,16 @@ If you see CDK-related errors:
 1. **"CDK CLI not found"** - Install with `npm install -g aws-cdk`
 2. **Bootstrap errors** - The deploy script auto-bootstraps, but you can manually run: `cdk bootstrap aws://ACCOUNT_ID/REGION`
 3. **Permission errors** - Ensure your AWS credentials have CloudFormation permissions
+
+### Agent name too long warning
+
+If you see a `ValidationException` about name length during deployment:
+
+```text
+Value '...-traces-destination' at 'name' failed to satisfy constraint: Member must have length less than or equal to 60
+```
+
+This means your `AGENT_NAME` is too long. AWS appends suffixes like `_mem-XXXXXXXXXX-traces-destination` to your agent name, and the combined string must be under 60 characters. Keep your agent name under 25 characters to avoid this issue.
 
 ## References
 

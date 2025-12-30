@@ -49,13 +49,13 @@ format: ## Format code and fix lint issues (ruff)
 	uv run ruff format langgraph_agent_web_search.py resilience.py cdk/
 
 deploy: ## Deploy agent to AWS (use PROFILE=name for SSO)
-	uv run ./deploy.sh $(PROFILE_ARG)
+	uv run python -m scripts.deploy $(PROFILE_ARG)
 
 destroy: ## Destroy agent only (keeps secret and ECR)
-	uv run ./destroy.sh $(PROFILE_ARG)
+	uv run python -m scripts.destroy $(PROFILE_ARG)
 
 destroy-all: ## Destroy all resources including secret and ECR
-	uv run ./destroy.sh $(PROFILE_ARG) --all
+	uv run python -m scripts.destroy $(PROFILE_ARG) --all
 
 status: ## Check agent status
 	$(AWS_PROFILE_PREFIX) uv run agentcore status

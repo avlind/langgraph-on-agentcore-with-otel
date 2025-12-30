@@ -1026,6 +1026,8 @@ deploy = [
     { name = "aws-cdk-lib" },
     { name = "bedrock-agentcore-starter-toolkit" },
     { name = "constructs" },
+    { name = "pyyaml" },
+    { name = "typer" },
 ]
 
 [package.dev-dependencies]
@@ -1049,8 +1051,10 @@ requires-dist = [
     { name = "langgraph", specifier = "~=1.0.5" },
     { name = "opentelemetry-instrumentation-langchain", specifier = "~=0.45.6" },
     { name = "python-dotenv", specifier = "~=1.2.1" },
+    { name = "pyyaml", marker = "extra == 'deploy'", specifier = "~=6.0.0" },
     { name = "tavily-python", specifier = "~=0.7.17" },
     { name = "tenacity", specifier = "~=9.0.0" },
+    { name = "typer", marker = "extra == 'deploy'", specifier = ">=0.16.0" },
 ]
 provides-extras = ["deploy"]
 

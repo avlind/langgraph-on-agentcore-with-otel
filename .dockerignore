@@ -64,8 +64,7 @@ tests/
 .bedrock_agentcore/
 
 # Deployment scripts (not needed in container)
-deploy.sh
-destroy.sh
+scripts/
 
 # Keep wheelhouse for offline installations
 # wheelhouse/

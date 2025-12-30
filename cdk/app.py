@@ -41,7 +41,7 @@ from stacks import (
 
 app = cdk.App()
 
-# Get configuration from context (passed by deploy.sh via --context flags)
+# Get configuration from context (passed by deploy script via --context flags)
 secret_name = app.node.try_get_context(CONTEXT_SECRET_NAME)
 tavily_api_key = app.node.try_get_context(CONTEXT_TAVILY_API_KEY)
 execution_role_arn = app.node.try_get_context(CONTEXT_EXECUTION_ROLE_ARN)

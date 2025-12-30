@@ -157,9 +157,9 @@ The test suite includes:
 
 ## Deployment
 
-### Using deploy.sh (Required)
+### Using the Deploy Script (Required)
 
-The `deploy.sh` script is **required** for deployment because it passes runtime environment variables to the AgentCore container via `--env` flags. Without this step, the agent would use hardcoded defaults instead of your `.env` configuration.
+The deployment script is **required** because it passes runtime environment variables to the AgentCore container via `--env` flags. Without this step, the agent would use hardcoded defaults instead of your `.env` configuration.
 
 ```bash
 # Using Makefile (recommended)
@@ -167,8 +167,8 @@ make deploy                          # Default credentials
 make deploy PROFILE=YourProfileName  # Named profile (SSO users)
 
 # Or using uv directly
-uv run ./deploy.sh                          # Default credentials
-uv run ./deploy.sh --profile YourProfileName # Named profile (SSO users)
+uv run python -m scripts.deploy                          # Default credentials
+uv run python -m scripts.deploy --profile YourProfileName # Named profile (SSO users)
 ```
 
 **What the script does:**
@@ -194,7 +194,7 @@ uv run ./deploy.sh --profile YourProfileName # Named profile (SSO users)
 <summary>Click to expand manual deployment steps</summary>
 <!-- markdownlint-enable MD033 -->
 
-> **Warning:** Manual deployment requires you to pass environment variables via `--env` flags when running `agentcore deploy`. If you skip this step, the agent will use hardcoded defaults instead of your configuration. **Using `deploy.sh` is strongly recommended.**
+> **Warning:** Manual deployment requires you to pass environment variables via `--env` flags when running `agentcore deploy`. If you skip this step, the agent will use hardcoded defaults instead of your configuration. **Using the deploy script (`make deploy`) is strongly recommended.**
 
 #### 1. Create Secrets Manager Secret
 
@@ -393,14 +393,22 @@ https://console.aws.amazon.com/cloudwatch/home?region=<your-region>#gen-ai-obser
 ```text
 .
 ├── langgraph_agent_web_search.py  # Main agent code
-├── deploy.sh                      # One-command deployment script
-├── destroy.sh                     # Cleanup script
+├── resilience.py                  # Retry and fallback logic
 ├── Makefile                       # Common development commands
 ├── pyproject.toml                 # Project metadata and dependencies
 ├── uv.lock                        # Locked dependencies (uv)
 ├── .env.sample                    # Environment variable template
 ├── .env                           # Local environment variables (gitignored)
 ├── .gitignore                     # Git ignore rules
+├── scripts/                       # Deployment scripts (Python/Typer)
+│   ├── deploy.py                  # Deploy to AWS Bedrock AgentCore
+│   ├── destroy.py                 # Cleanup AWS resources
+│   └── lib/                       # Shared utilities
+│       ├── aws.py                 # boto3 helpers (CloudFormation, Secrets, ECR)
+│       ├── commands.py            # Subprocess wrappers (agentcore, cdk)
+│       ├── config.py              # .env loading and validation
+│       ├── console.py             # Colored output (Rich)
+│       └── yaml_parser.py         # Parse .bedrock_agentcore.yaml
 ├── cdk/                           # AWS CDK infrastructure code
 │   ├── app.py                     # CDK app entry point
 │   ├── cdk.json                   # CDK configuration
@@ -606,15 +614,15 @@ Use the cleanup script to destroy AWS resources:
 make destroy PROFILE=YourProfile     # Destroy agent only (keeps secret and ECR)
 make destroy-all PROFILE=YourProfile # Destroy everything
 
-# Or using the script directly
-./destroy.sh                          # Destroy agent only
-./destroy.sh --profile YourProfileName # With named profile
-./destroy.sh --all                    # Destroy everything
+# Or using uv directly
+uv run python -m scripts.destroy                          # Destroy agent only
+uv run python -m scripts.destroy --profile YourProfileName # With named profile
+uv run python -m scripts.destroy --all                    # Destroy everything
 
 # Selective deletion flags
-./destroy.sh --delete-secret              # Also delete Secrets Manager secret
-./destroy.sh --delete-ecr                 # Also delete ECR repository
-./destroy.sh --delete-secret --delete-ecr # Same as --all
+uv run python -m scripts.destroy --delete-secret              # Also delete Secrets Manager secret
+uv run python -m scripts.destroy --delete-ecr                 # Also delete ECR repository
+uv run python -m scripts.destroy --delete-secret --delete-ecr # Same as --all
 ```
 
 **What gets deleted:**
@@ -626,7 +634,7 @@ make destroy-all PROFILE=YourProfile # Destroy everything
 | `--delete-ecr`    | + ECR repository                                                                              |
 | `--all`           | Everything above                                                                              |
 
-> **Tip:** For iterative development, use `./destroy.sh` without flags. This preserves your secret and ECR repo, making redeployment faster since these don't need to be recreated.
+> **Tip:** For iterative development, use `make destroy` without the `-all` suffix. This preserves your secret and ECR repo, making redeployment faster since these don't need to be recreated.
 >
 > **Note:** The destroy script uses AWS CloudFormation directly to delete CDK stacks, so you don't need the CDK CLI installed for cleanup.
 

@@ -64,7 +64,8 @@ The agent is a ReAct-style graph in `langgraph_agent_web_search.py`:
 - **Infrastructure as Code**: AWS CDK (Python) manages Secrets Manager and IAM policies in `cdk/` directory
 - **Secrets handling**: TAVILY_API_KEY is stored in AWS Secrets Manager via CDK SecretsStack
 - **IAM policies**: CDK IamPolicyStack grants `secretsmanager:GetSecretValue` to execution role
-- **Environment variables**: `deploy.sh` passes `AWS_REGION`, `SECRET_NAME`, `MODEL_ID` to the container runtime via `agentcore deploy --env` flags
+- **Environment variables**: `scripts/deploy.py` passes `AWS_REGION`, `SECRET_NAME`, `MODEL_ID` to the container runtime via `agentcore deploy --env` flags
+- **Deployment scripts**: Python scripts in `scripts/` directory using Typer CLI framework (replaced shell scripts)
 - **Container deployment**: Required for OpenTelemetry instrumentation - the Dockerfile uses `opentelemetry-instrument` wrapper
 - **Two-phase CDK deployment**: SecretsStack deploys before agentcore, IamPolicyStack deploys after (needs execution role ARN)
 - **Linting/Formatting**: Uses ruff for both linting and formatting

@@ -59,7 +59,7 @@ class SecretsStack(Stack):
 
         # Create the secret with explicit name
         # Note: unsafe_plain_text is used because the key is passed via CDK context
-        # from deploy.sh. The secret value is not logged by CDK.
+        # from the deploy script. The secret value is not logged by CDK.
         self.secret = secretsmanager.Secret(
             self,
             "TavilyApiKey",

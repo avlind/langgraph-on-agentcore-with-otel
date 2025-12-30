@@ -31,6 +31,8 @@ deploy = [
     "bedrock-agentcore-starter-toolkit~=0.2.5",  # agentcore CLI
     "aws-cdk-lib~=2.233.0",                       # CDK for infrastructure
     "constructs~=10.4.4",                         # CDK dependency
+    "typer>=0.16.0",                               # CLI framework with Rich
+    "pyyaml~=6.0.0",                              # YAML parsing
 ]
 
 [dependency-groups]

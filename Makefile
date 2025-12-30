@@ -17,7 +17,7 @@ AWS_PROFILE_PREFIX =
 endif
 
 help: ## Show this help message
-	@echo "Usage: make [target] [PROFILE=YourAWSProfile]"
+	@echo "Usage: make [target] [PROFILE=YourAWSProfile] [PROMPT=\"your prompt\"]"
 	@echo ""
 	@echo "Targets:"
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -27,6 +27,7 @@ help: ## Show this help message
 	@echo "  make test                     # Run all tests"
 	@echo "  make deploy PROFILE=PowerUser # Deploy with AWS profile"
 	@echo "  make invoke PROFILE=PowerUser # Test the deployed agent"
+	@echo "  make invoke PROMPT=\"Search for AWS news\" # Custom prompt"
 
 setup: ## Install dependencies with uv
 	uv sync --extra deploy
@@ -49,25 +50,32 @@ format: ## Format code and fix lint issues (ruff)
 	uv run ruff format langgraph_agent_web_search.py resilience.py cdk/
 
 deploy: ## Deploy agent to AWS (use PROFILE=name for SSO)
-	uv run ./deploy.sh $(PROFILE_ARG)
+	uv run python -m scripts.deploy $(PROFILE_ARG)
 
 destroy: ## Destroy agent only (keeps secret and ECR)
-	uv run ./destroy.sh $(PROFILE_ARG)
+	uv run python -m scripts.destroy $(PROFILE_ARG)
 
 destroy-all: ## Destroy all resources including secret and ECR
-	uv run ./destroy.sh $(PROFILE_ARG) --all
+	uv run python -m scripts.destroy $(PROFILE_ARG) --all
 
 status: ## Check agent status
 	$(AWS_PROFILE_PREFIX) uv run agentcore status
 
-logs: ## Tail agent logs
-	$(AWS_PROFILE_PREFIX) uv run agentcore logs --follow
+logs: ## Show how to tail agent logs
+	@echo "To tail logs, first get the log group from 'make status', then run:"
+	@echo ""
+	@echo "  aws logs tail <log-group> --log-stream-name-prefix \"\$$(date +%Y/%m/%d)/[runtime-logs]\" --follow"
+	@echo ""
+	@echo "Or run 'make status' to see the full command."
 
 traces: ## List recent traces
 	$(AWS_PROFILE_PREFIX) uv run agentcore obs list
 
+# Default prompt for invoke (override with: make invoke PROMPT="your prompt")
+PROMPT ?= What is the weather in Seattle?
+
 invoke: ## Test the deployed agent
-	$(AWS_PROFILE_PREFIX) uv run agentcore invoke '{"prompt": "What is the weather in Seattle?"}'
+	$(AWS_PROFILE_PREFIX) uv run agentcore invoke '{"prompt": "$(PROMPT)"}'
 
 clean: ## Remove build artifacts and cache files
 	rm -rf .pytest_cache

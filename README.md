@@ -448,8 +448,7 @@ https://console.aws.amazon.com/cloudwatch/home?region=<your-region>#gen-ai-obser
 
 ```text
 .
-├── langgraph_agent_web_search.py  # Main agent code
-├── resilience.py                  # Retry and fallback logic
+├── langgraph_agent_web_search.py  # Main agent code (includes resilience logic)
 ├── Makefile                       # Common development commands
 ├── pyproject.toml                 # Project metadata and dependencies
 ├── uv.lock                        # Locked dependencies (uv)

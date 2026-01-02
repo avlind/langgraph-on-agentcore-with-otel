@@ -1,0 +1,285 @@
+{
+  "version": "1.0",
+  "prompts": [
+    {
+      "id": "ba7ba86f-fffa-4d9e-86b0-a5dbbf44e78d",
+      "name": "Weather Query",
+      "text": "What is the current weather in Seattle?",
+      "category": "general",
+      "created_at": "2026-01-02T11:29:58.696667"
+    },
+    {
+      "id": "e68e9943-e1d5-443f-b264-2b03ab084cc2",
+      "name": "AWS News",
+      "text": "Search for the latest AWS news and announcements",
+      "category": "tech",
+      "created_at": "2026-01-02T11:29:58.696679"
+    },
+    {
+      "id": "e112aae4-a418-4ebb-bd87-2f6772f393c8",
+      "name": "Stock Price",
+      "text": "What is the current stock price of Amazon?",
+      "category": "finance",
+      "created_at": "2026-01-02T11:29:58.696683"
+    },
+    {
+      "id": "227e49fc-8d96-4ac0-9df0-06ff9baad402",
+      "name": "Python Tutorial",
+      "text": "Find a tutorial on Python async programming",
+      "category": "tech",
+      "created_at": "2026-01-02T11:29:58.696686"
+    },
+    {
+      "id": "756ac4f8-21d7-4dac-9240-0cea33974dfe",
+      "name": "Tech News",
+      "text": "What are the top technology news stories today?",
+      "category": "tech",
+      "created_at": "2026-01-02T11:29:58.696689"
+    },
+    {
+      "id": "34b8dff6-0482-4e59-8f64-ef0617ebc276",
+      "name": "Sports Scores",
+      "text": "What were the latest NBA game scores?",
+      "category": "sports",
+      "created_at": "2026-01-02T11:29:58.696691"
+    },
+    {
+      "id": "c4df6a19-1a2b-43dd-91d1-2d99ec56d526",
+      "name": "Recipe Search",
+      "text": "Find a recipe for chocolate chip cookies",
+      "category": "lifestyle",
+      "created_at": "2026-01-02T11:29:58.696694"
+    },
+    {
+      "id": "c609f891-8b62-476c-a932-e687400c9051",
+      "name": "Travel Info",
+      "text": "What are the top tourist attractions in Tokyo?",
+      "category": "travel",
+      "created_at": "2026-01-02T11:29:58.696697"
+    },
+    {
+      "id": "781ae8c5-c065-4e44-a042-939e6b6ed7bd",
+      "name": "Science News",
+      "text": "Search for recent discoveries in astronomy",
+      "category": "science",
+      "created_at": "2026-01-02T11:29:58.696699"
+    },
+    {
+      "id": "ae0bb9cd-6917-44c4-a186-02fbb3ae54a6",
+      "name": "Book Recommendations",
+      "text": "What are the best programming books of 2025?",
+      "category": "tech",
+      "created_at": "2026-01-02T11:29:58.696702"
+    },
+    {
+      "id": "b40c94f1-ec9e-4179-82db-98bf77411d77",
+      "name": "Movie Reviews",
+      "text": "Find reviews for recent science fiction movies",
+      "category": "entertainment",
+      "created_at": "2026-01-02T11:29:58.696704"
+    },
+    {
+      "id": "de3077d9-f10e-49d7-8cef-5ced91929df9",
+      "name": "Health Tips",
+      "text": "Search for healthy breakfast ideas",
+      "category": "lifestyle",
+      "created_at": "2026-01-02T11:29:58.696707"
+    },
+    {
+      "id": "141c4ed1-6fb6-44cb-9d95-275bee61f02c",
+      "name": "Long Response Test",
+      "text": "Provide a detailed summary of machine learning concepts",
+      "category": "tech",
+      "created_at": "2026-01-02T11:29:58.696709"
+    },
+    {
+      "id": "892ff5d8-2b70-4d2f-8396-a18bd18afe5a",
+      "name": "Simple Query",
+      "text": "What is 2 + 2?",
+      "category": "test",
+      "created_at": "2026-01-02T11:29:58.696711"
+    },
+    {
+      "id": "13e2eac1-36df-4ca3-bd69-c741d61ebaca",
+      "name": "Current Events",
+      "text": "What major events happened in the news today?",
+      "category": "general",
+      "created_at": "2026-01-02T11:29:58.696714"
+    },
+    {
+      "id": "stress-01-comprehensive-ai",
+      "name": "AI Industry Deep Dive",
+      "text": "Search for and provide a comprehensive analysis of the current state of the AI industry in 2026. Include major companies, recent breakthroughs, funding trends, regulatory developments, and predictions for the next 5 years. Be as detailed as possible.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:00.000000"
+    },
+    {
+      "id": "stress-02-cloud-comparison",
+      "name": "Cloud Provider Comparison",
+      "text": "Search for detailed comparisons between AWS, Azure, and Google Cloud in 2026. Cover pricing models, service offerings, market share, enterprise adoption rates, strengths and weaknesses of each platform, and recent announcements. Provide extensive details.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:01.000000"
+    },
+    {
+      "id": "stress-03-crypto-analysis",
+      "name": "Cryptocurrency Market Analysis",
+      "text": "Search for comprehensive information about the current cryptocurrency market. Include Bitcoin and Ethereum prices, market cap rankings of top 20 cryptocurrencies, recent regulatory news, institutional adoption, DeFi trends, and expert predictions. Be thorough.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:02.000000"
+    },
+    {
+      "id": "stress-04-ev-market",
+      "name": "Electric Vehicle Industry",
+      "text": "Search for and provide an extensive report on the electric vehicle industry. Cover Tesla, Rivian, BYD, traditional automakers' EV efforts, battery technology advances, charging infrastructure, government incentives, sales figures, and market projections through 2030.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:03.000000"
+    },
+    {
+      "id": "stress-05-cybersecurity",
+      "name": "Cybersecurity Landscape",
+      "text": "Search for detailed information about the current cybersecurity threat landscape. Include recent major breaches, ransomware trends, nation-state actors, zero-day vulnerabilities, AI in security, best practices for enterprises, and spending forecasts. Be comprehensive.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:04.000000"
+    },
+    {
+      "id": "stress-06-space-exploration",
+      "name": "Space Exploration Update",
+      "text": "Search for comprehensive news about space exploration in 2026. Cover SpaceX Starship progress, NASA Artemis missions, international space station updates, commercial space tourism, Mars exploration plans, satellite internet constellations, and upcoming launches.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:05.000000"
+    },
+    {
+      "id": "stress-07-global-economy",
+      "name": "Global Economic Overview",
+      "text": "Search for and provide a detailed analysis of the global economy. Include GDP growth rates for major economies, inflation trends, central bank policies, trade relations, employment statistics, supply chain status, and economic forecasts. Be extremely detailed.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:06.000000"
+    },
+    {
+      "id": "stress-08-biotech-pharma",
+      "name": "Biotech & Pharma Advances",
+      "text": "Search for recent advances in biotechnology and pharmaceuticals. Cover gene therapy breakthroughs, mRNA technology applications, cancer treatment innovations, drug pricing debates, FDA approvals, clinical trial results, and major company pipelines. Provide extensive details.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:07.000000"
+    },
+    {
+      "id": "stress-09-renewable-energy",
+      "name": "Renewable Energy Progress",
+      "text": "Search for comprehensive information about renewable energy adoption worldwide. Cover solar and wind capacity growth, battery storage advances, hydrogen fuel developments, nuclear energy revival, grid modernization, investment trends, and policy changes across regions.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:08.000000"
+    },
+    {
+      "id": "stress-10-llm-developments",
+      "name": "LLM & GenAI Progress",
+      "text": "Search for the latest developments in large language models and generative AI. Cover GPT models, Claude updates, open source alternatives, multimodal AI, enterprise adoption, safety research, regulatory proposals, and benchmark comparisons. Be thorough and detailed.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:09.000000"
+    },
+    {
+      "id": "stress-11-semiconductor",
+      "name": "Semiconductor Industry",
+      "text": "Search for detailed information about the semiconductor industry. Cover TSMC, Intel, Samsung fab updates, chip shortage status, AI chip competition, NVIDIA vs AMD, geopolitical tensions, CHIPS Act progress, and technology roadmaps for sub-2nm processes.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:10.000000"
+    },
+    {
+      "id": "stress-12-climate-science",
+      "name": "Climate Science Updates",
+      "text": "Search for the latest climate science research and news. Include temperature anomaly data, ice sheet measurements, extreme weather events, carbon emission trends, COP conference outcomes, corporate sustainability pledges, and climate model predictions. Be comprehensive.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:11.000000"
+    },
+    {
+      "id": "stress-13-quantum-computing",
+      "name": "Quantum Computing Progress",
+      "text": "Search for recent developments in quantum computing. Cover IBM, Google, IonQ achievements, qubit counts, error correction advances, quantum advantage demonstrations, commercial applications, investment levels, and timeline predictions for practical quantum computers.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:12.000000"
+    },
+    {
+      "id": "stress-14-streaming-wars",
+      "name": "Streaming Industry Analysis",
+      "text": "Search for comprehensive analysis of the streaming entertainment industry. Cover Netflix, Disney+, Amazon Prime, Apple TV+, HBO Max subscriber numbers, content spending, profitability challenges, sports streaming, ad-supported tiers, and consolidation trends.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:13.000000"
+    },
+    {
+      "id": "stress-15-robotics-automation",
+      "name": "Robotics & Automation",
+      "text": "Search for recent advances in robotics and industrial automation. Cover humanoid robots from Tesla and Boston Dynamics, warehouse automation, surgical robots, agricultural robots, manufacturing trends, labor implications, and market growth projections. Be detailed.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:14.000000"
+    },
+    {
+      "id": "stress-16-fintech-banking",
+      "name": "Fintech & Digital Banking",
+      "text": "Search for comprehensive information about fintech and digital banking trends. Cover neobanks, payment processors, buy-now-pay-later services, embedded finance, open banking APIs, regulatory changes, and how traditional banks are responding to disruption.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:15.000000"
+    },
+    {
+      "id": "stress-17-metaverse-vr",
+      "name": "Metaverse & VR/AR",
+      "text": "Search for the current state of metaverse and VR/AR technology. Cover Meta's progress, Apple Vision Pro adoption, enterprise VR applications, gaming developments, social VR platforms, hardware sales, developer ecosystem, and realistic market expectations.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:16.000000"
+    },
+    {
+      "id": "stress-18-supply-chain",
+      "name": "Global Supply Chain Status",
+      "text": "Search for detailed analysis of global supply chain conditions. Cover shipping costs, port congestion, manufacturing reshoring trends, inventory levels, logistics technology, labor availability, geopolitical risks, and how companies are building resilience.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:17.000000"
+    },
+    {
+      "id": "stress-19-healthcare-tech",
+      "name": "Healthcare Technology",
+      "text": "Search for comprehensive information about healthcare technology innovations. Cover telehealth adoption, AI diagnostics, electronic health records, wearable health devices, remote patient monitoring, healthcare data security, and digital transformation challenges.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:18.000000"
+    },
+    {
+      "id": "stress-20-5g-telecom",
+      "name": "5G & Telecommunications",
+      "text": "Search for detailed information about 5G deployment and telecommunications. Cover global rollout status, carrier investments, enterprise use cases, fixed wireless access, spectrum auctions, equipment vendors, and the path toward 6G research. Be thorough.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:19.000000"
+    },
+    {
+      "id": "stress-21-real-estate",
+      "name": "Real Estate Market Analysis",
+      "text": "Search for comprehensive real estate market analysis. Cover residential prices in major markets, commercial real estate challenges, office vacancy rates, remote work impact, mortgage rates, housing affordability, construction trends, and investment outlook.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:20.000000"
+    },
+    {
+      "id": "stress-22-food-agriculture",
+      "name": "Food & Agriculture Tech",
+      "text": "Search for innovations in food and agriculture technology. Cover vertical farming, precision agriculture, alternative proteins, lab-grown meat progress, food waste reduction, supply chain traceability, sustainable farming practices, and global food security concerns.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:21.000000"
+    },
+    {
+      "id": "stress-23-social-media",
+      "name": "Social Media Landscape",
+      "text": "Search for comprehensive analysis of the social media industry. Cover platform user statistics, advertising revenue trends, content moderation challenges, creator economy developments, regulatory pressures, emerging platforms, and shifts in user behavior patterns.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:22.000000"
+    },
+    {
+      "id": "stress-24-defense-tech",
+      "name": "Defense Technology",
+      "text": "Search for recent developments in defense technology. Cover autonomous weapons, drone warfare advances, cyber warfare capabilities, space force developments, hypersonic missiles, defense contractor innovations, and military AI applications. Be comprehensive and detailed.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:23.000000"
+    },
+    {
+      "id": "stress-25-education-tech",
+      "name": "Education Technology",
+      "text": "Search for comprehensive information about education technology. Cover online learning platforms, AI tutoring systems, EdTech funding, K-12 technology adoption, higher education disruption, skills-based learning, corporate training trends, and the future of credentials.",
+      "category": "stress-test",
+      "created_at": "2026-01-02T12:30:24.000000"
+    }
+  ]
+}

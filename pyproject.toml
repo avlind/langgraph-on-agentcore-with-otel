@@ -34,6 +34,10 @@ deploy = [
     "typer>=0.16.0",                               # CLI framework with Rich
     "pyyaml~=6.0.0",                              # YAML parsing
 ]
+# NiceGUI testing UI
+ui = [
+    "nicegui>=2.0.0",
+]
 
 [dependency-groups]
 dev = [

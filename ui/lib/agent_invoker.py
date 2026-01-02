@@ -34,7 +34,7 @@ class AgentInvoker:
         self._semaphore: asyncio.Semaphore | None = None
         self._cancelled = False
 
-    def _invoke_sync(self, prompt: str) -> tuple[bool, str]:
+    def _invoke_sync(self, prompt: str, session_id: str) -> tuple[bool, str]:
         """
         Synchronous subprocess call to agentcore invoke.
 
@@ -42,7 +42,6 @@ class AgentInvoker:
         Returns: (success, result_or_error)
         """
         payload = json.dumps({"prompt": prompt})
-        session_id = str(uuid.uuid4())
         cmd = ["uv", "run", "agentcore", "invoke", "--session-id", session_id, payload]
 
         env = os.environ.copy()
@@ -92,11 +91,15 @@ class AgentInvoker:
         if self._semaphore is None:
             self._semaphore = asyncio.Semaphore(self._config.max_concurrent)
 
+        # Generate unique session ID for this invocation
+        session_id = str(uuid.uuid4())
+
         result = InvocationResult(
             prompt_id=task.prompt_id,
             prompt_name=task.prompt_name,
             prompt_text=task.prompt_text,
             status=InvocationStatus.PENDING,
+            session_id=session_id,
         )
         on_status_change(result)
 
@@ -119,7 +122,9 @@ class AgentInvoker:
             result.started_at = datetime.now()
             on_status_change(result)
 
-            success, output = await asyncio.to_thread(self._invoke_sync, task.prompt_text)
+            success, output = await asyncio.to_thread(
+                self._invoke_sync, task.prompt_text, session_id
+            )
 
             result.completed_at = datetime.now()
 

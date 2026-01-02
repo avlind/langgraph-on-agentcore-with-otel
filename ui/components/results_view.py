@@ -97,15 +97,19 @@ class ResultsView:
                         "text-sm text-red-700 whitespace-pre-wrap"
                     )
 
-                # Timing info
-                if result.started_at:
-                    ui.label(f"Started: {result.started_at.strftime('%H:%M:%S')}").classes(
-                        "text-xs text-gray-400 mt-2"
-                    )
-                if result.completed_at:
-                    ui.label(f"Completed: {result.completed_at.strftime('%H:%M:%S')}").classes(
-                        "text-xs text-gray-400"
-                    )
+                # Timing and session info
+                with ui.row().classes("w-full gap-4 mt-2 text-xs text-gray-400"):
+                    if result.started_at:
+                        ui.label(f"Started: {result.started_at.strftime('%H:%M:%S')}")
+                    if result.completed_at:
+                        ui.label(f"Completed: {result.completed_at.strftime('%H:%M:%S')}")
+
+                if result.session_id:
+                    with ui.row().classes("items-center gap-1 mt-1"):
+                        ui.label("Session:").classes("text-xs text-gray-400")
+                        ui.label(result.session_id).classes(
+                            "text-xs font-mono text-blue-600 select-all"
+                        )
 
     def _get_status_config(self, status: InvocationStatus) -> dict:
         """Get icon and color configuration for a status."""

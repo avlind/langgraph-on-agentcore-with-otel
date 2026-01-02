@@ -71,6 +71,7 @@ class InvocationResult:
     error_message: str | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    session_id: str | None = None
 
     @property
     def duration_seconds(self) -> float | None:

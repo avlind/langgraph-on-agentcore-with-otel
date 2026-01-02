@@ -6,6 +6,7 @@ from datetime import datetime
 
 from nicegui import ui
 
+from ..lib.aws_config import build_cloudwatch_session_url, get_agentcore_region
 from ..lib.models import InvocationResult, InvocationStatus
 
 
@@ -107,9 +108,19 @@ class ResultsView:
                 if result.session_id:
                     with ui.row().classes("items-center gap-1 mt-1"):
                         ui.label("Session:").classes("text-xs text-gray-400")
-                        ui.label(result.session_id).classes(
-                            "text-xs font-mono text-blue-600 select-all"
-                        )
+                        # Try to build deep link URL, fall back to basic dashboard
+                        dashboard_url = build_cloudwatch_session_url(result.session_id)
+                        if not dashboard_url:
+                            region = get_agentcore_region()
+                            dashboard_url = (
+                                f"https://console.aws.amazon.com/cloudwatch/home"
+                                f"?region={region}#gen-ai-observability/agent-core"
+                            )
+                        ui.link(
+                            result.session_id,
+                            dashboard_url,
+                            new_tab=True,
+                        ).classes("text-xs font-mono text-blue-600 hover:underline")
 
     def _get_status_config(self, status: InvocationStatus) -> dict:
         """Get icon and color configuration for a status."""
@@ -166,6 +177,7 @@ class ResultsView:
             "Result/Error",
             "Started",
             "Completed",
+            "Session ID",
         ]
         writer.writerow(headers)
 
@@ -186,6 +198,7 @@ class ResultsView:
                     result_or_error,
                     started,
                     completed,
+                    result.session_id or "",
                 ]
             )
 

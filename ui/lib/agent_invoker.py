@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import subprocess
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable
@@ -37,11 +38,12 @@ class AgentInvoker:
         """
         Synchronous subprocess call to agentcore invoke.
 
-        Runs: AWS_PROFILE={profile} agentcore invoke '{"prompt": "..."}'
+        Runs: AWS_PROFILE={profile} agentcore invoke --session-id {uuid} '{"prompt": "..."}'
         Returns: (success, result_or_error)
         """
         payload = json.dumps({"prompt": prompt})
-        cmd = ["uv", "run", "agentcore", "invoke", payload]
+        session_id = str(uuid.uuid4())
+        cmd = ["uv", "run", "agentcore", "invoke", "--session-id", session_id, payload]
 
         env = os.environ.copy()
         if self._config.aws_profile:

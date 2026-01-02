@@ -309,6 +309,56 @@ aws iam put-role-policy \
 
 ## Testing the Deployed Agent
 
+### Web UI (Recommended)
+
+A NiceGUI-based web interface is available for testing the deployed agent with multiple prompts concurrently:
+
+```bash
+# Launch the testing UI
+make ui
+```
+
+Then open http://localhost:8080 in your browser.
+
+**Features:**
+
+| Feature | Description |
+|---------|-------------|
+| **Prompt Library** | Pre-configured library of 15 test prompts across different categories |
+| **Concurrent Execution** | Run multiple prompts in parallel (configurable 1-10 concurrent) |
+| **AWS Profile Selection** | Dropdown populated from `~/.aws/config` |
+| **Real-time Progress** | Live progress bar and status counters |
+| **Results View** | Expandable results with full response text |
+| **CSV Export** | Export all results to CSV for analysis |
+| **CRUD Operations** | Add, edit, and delete prompts from the library |
+
+**UI Layout:**
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│  AgentCore Testing Dashboard                      [Dark Mode]   │
+├────────────────────────────┬────────────────────────────────────┤
+│  Prompt Library            │  Execution                         │
+│  ┌──────────────────────┐  │  AWS Profile: [PowerUser    ▼]    │
+│  │ □ AWS News      tech │  │  Concurrent:  ═══●═══════  3      │
+│  │ □ Weather      gen   │  │  Timeout:     [120] sec           │
+│  │ □ Simple Test  test  │  │                                   │
+│  │ ...                  │  │  [Run Selected] [Run All]         │
+│  └──────────────────────┘  │  Progress: ████████░░ 8/10        │
+│  [Add] [Delete]            │  ✓ 6 success  ✗ 2 failed          │
+│  [Select All] [None]       │                                   │
+├────────────────────────────┴────────────────────────────────────┤
+│  Results                                    [Export CSV] [Clear]│
+│  ┌──────────────────────────────────────────────────────────────┤
+│  │ ✓ AWS News        12.3s  [▼]                                │
+│  │ ✓ Weather Query    8.1s  [▼]                                │
+│  │ ✗ Stock Price      4.2s  [▼] Error: timeout                 │
+│  └──────────────────────────────────────────────────────────────┘
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Prompt Storage:** Prompts are stored in `ui/prompts.json` and persist across sessions.
+
 ### Invoke the Agent
 
 ```bash
@@ -423,6 +473,18 @@ https://console.aws.amazon.com/cloudwatch/home?region=<your-region>#gen-ai-obser
 │       ├── constants.py           # Shared constants
 │       ├── secrets_stack.py       # Secrets Manager resources
 │       └── iam_stack.py           # IAM policies
+├── ui/                            # NiceGUI testing web application
+│   ├── app.py                     # Main application entry point
+│   ├── prompts.json               # Prompt library storage (generated)
+│   ├── components/                # UI components
+│   │   ├── prompt_library.py      # Prompt list with CRUD
+│   │   ├── execution_panel.py     # Run controls and progress
+│   │   └── results_view.py        # Results table with export
+│   └── lib/                       # Application logic
+│       ├── models.py              # Data models (Prompt, Config, Result)
+│       ├── prompt_store.py        # JSON-based prompt persistence
+│       ├── agent_invoker.py       # Async agent invocation wrapper
+│       └── aws_config.py          # AWS profile detection
 ├── tests/                         # Test suite
 │   ├── test_agent.py              # Agent unit tests
 │   ├── test_agent_functions.py    # Agent function unit tests
@@ -448,6 +510,7 @@ https://console.aws.amazon.com/cloudwatch/home?region=<your-region>#gen-ai-obser
 | `aws-opentelemetry-distro`                | AWS OTEL distribution          |
 | `aws-cdk-lib`                             | AWS CDK infrastructure library |
 | `constructs`                              | CDK constructs library         |
+| `nicegui`                                 | Web UI for testing (optional)  |
 | `pytest`                                  | Testing framework              |
 
 ## Makefile Commands
@@ -480,6 +543,7 @@ make invoke PROFILE=YourProfile                 # Test with default prompt
 make invoke PROFILE=YourProfile PROMPT="Hello"  # Test with custom prompt
 make logs PROFILE=YourProfile                   # Show how to tail agent logs
 make traces PROFILE=YourProfile                 # List recent traces
+make ui                                         # Launch web UI for testing (localhost:8080)
 ```
 
 ### Cleanup

@@ -36,3 +36,4 @@ cdk/cdk-outputs.json
 # OS
 .DS_Store
 Thumbs.db
+.playwright-mcp/

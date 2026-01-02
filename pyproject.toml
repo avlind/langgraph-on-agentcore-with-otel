@@ -47,7 +47,7 @@ dev = [
 ]
 
 [tool.setuptools]
-py-modules = ["langgraph_agent_web_search", "resilience"]
+py-modules = ["langgraph_agent_web_search"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

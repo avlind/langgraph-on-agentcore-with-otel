@@ -81,17 +81,32 @@ class ResilientLLMInvoker:
     def __init__(
         self,
         primary_llm_with_tools,
-        fallback_llm_with_tools,
+        fallback_model_id: str,
+        tools: list,
         max_retries: int = 3,
         min_wait_seconds: float = 1.0,
         max_wait_seconds: float = 10.0,
     ):
         self.primary_llm = primary_llm_with_tools
-        self.fallback_llm = fallback_llm_with_tools
+        self._fallback_model_id = fallback_model_id
+        self._tools = tools
+        self._fallback_llm = None  # Lazy initialized
         self.max_retries = max_retries
         self.min_wait = min_wait_seconds
         self.max_wait = max_wait_seconds
         self._using_fallback = False
+
+    @property
+    def fallback_llm(self):
+        """Lazy initialization of fallback model - only created when needed."""
+        if self._fallback_llm is None:
+            logger.info("Initializing fallback LLM with model: %s", self._fallback_model_id)
+            llm = init_chat_model(
+                self._fallback_model_id,
+                model_provider="bedrock_converse",
+            )
+            self._fallback_llm = llm.bind_tools(self._tools)
+        return self._fallback_llm
 
     def invoke(self, messages: list[BaseMessage]) -> BaseMessage:
         """
@@ -227,25 +242,19 @@ llm_primary = init_chat_model(
     model_provider="bedrock_converse",
 )
 
-# Initialize the fallback LLM with Bedrock
-logger.info("Initializing fallback LLM with model: %s", FALLBACK_MODEL_ID)
-llm_fallback = init_chat_model(
-    FALLBACK_MODEL_ID,
-    model_provider="bedrock_converse",
-)
-
 # Define search tool
 search = TavilySearch(max_results=3)
 tools = [search]
 
-# Bind tools to both models
+# Bind tools to primary model
 llm_primary_with_tools = llm_primary.bind_tools(tools)
-llm_fallback_with_tools = llm_fallback.bind_tools(tools)
 
-# Create resilient invoker with retry and fallback
+# Create resilient invoker with retry and lazy fallback initialization
+# Fallback model is only initialized when primary model fails (reduces cold start)
 resilient_llm = ResilientLLMInvoker(
     primary_llm_with_tools=llm_primary_with_tools,
-    fallback_llm_with_tools=llm_fallback_with_tools,
+    fallback_model_id=FALLBACK_MODEL_ID,
+    tools=tools,
     max_retries=3,
     min_wait_seconds=1.0,
     max_wait_seconds=10.0,

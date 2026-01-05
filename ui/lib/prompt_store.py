@@ -89,14 +89,6 @@ class PromptStore:
             return True
         return False
 
-    def search_prompts(self, query: str) -> list[Prompt]:
-        """Search prompts by name or text."""
-        query = query.lower()
-        results = [
-            p for p in self._prompts.values() if query in p.name.lower() or query in p.text.lower()
-        ]
-        return sorted(results, key=lambda p: p.name.lower())
-
 
 def get_default_prompts() -> list[Prompt]:
     """Return a set of default prompts for initial setup."""

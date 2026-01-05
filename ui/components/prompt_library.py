@@ -13,7 +13,6 @@ class PromptLibrary:
         self.store = store
         self.on_selection_change = on_selection_change
         self.selected_ids: set[str] = set()
-        self.search_query = ""
         self._prompt_container = None
         self._selection_label = None
 
@@ -21,12 +20,6 @@ class PromptLibrary:
         """Render the prompt library panel."""
         with ui.card().classes("w-full"):
             ui.label("Prompt Library").classes("text-lg font-bold mb-2")
-
-            # Search input
-            ui.input(
-                placeholder="Search prompts...",
-                on_change=lambda e: self._on_search(e.value),
-            ).classes("w-full mb-2")
 
             # Selection info
             self._selection_label = ui.label("0 selected").classes("text-sm text-gray-500 mb-2")
@@ -51,11 +44,7 @@ class PromptLibrary:
         """Render the list of prompts."""
         self._prompt_container.clear()
 
-        prompts = (
-            self.store.search_prompts(self.search_query)
-            if self.search_query
-            else self.store.list_prompts()
-        )
+        prompts = self.store.list_prompts()
 
         with self._prompt_container:
             if not prompts:
@@ -98,18 +87,9 @@ class PromptLibrary:
         count = len(self.selected_ids)
         self._selection_label.text = f"{count} selected"
 
-    def _on_search(self, query: str) -> None:
-        """Handle search input change."""
-        self.search_query = query
-        self._render_prompts()
-
     def _select_all(self) -> None:
-        """Select all visible prompts."""
-        prompts = (
-            self.store.search_prompts(self.search_query)
-            if self.search_query
-            else self.store.list_prompts()
-        )
+        """Select all prompts."""
+        prompts = self.store.list_prompts()
         self.selected_ids = {p.id for p in prompts}
         self._render_prompts()
         self._update_selection_label()

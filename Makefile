@@ -78,6 +78,7 @@ invoke: ## Test the deployed agent
 	$(AWS_PROFILE_PREFIX) uv run agentcore invoke '{"prompt": "$(PROMPT)"}'
 
 ui: ## Launch the agent testing web UI
+	@uv sync --extra ui --quiet
 	uv run python -m ui.app
 
 clean: ## Remove build artifacts and cache files

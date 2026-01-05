@@ -14,7 +14,7 @@ dependencies = [
     "langchain-community~=0.4.1",
     "langchain-core~=1.2.4",
     # Tools and utilities
-    "tavily-python~=0.7.17",
+    "langchain-tavily>=0.2.0",
     "python-dotenv~=1.2.1",
     # Retry logic
     "tenacity~=9.0.0",

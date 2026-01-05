@@ -126,7 +126,7 @@ AWS recommends adding [jitter](https://aws.amazon.com/builders-library/timeouts-
 
 The agent uses **Global Cross-Region Inference** profiles for both models:
 
-```
+```text
 global.anthropic.claude-haiku-4-5-20251001-v1:0
 global.anthropic.claude-sonnet-4-5-20250929-v1:0
 ```
@@ -152,7 +152,7 @@ global.anthropic.claude-sonnet-4-5-20250929-v1:0
 
 The resilience logic logs key events for observability:
 
-```
+```text
 INFO  - Chatbot node invoked with 1 messages
 WARN  - Primary model failed after retries: ThrottlingException. Falling back to secondary model.
 INFO  - Using fallback model due to primary model failure: ...

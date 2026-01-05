@@ -57,15 +57,18 @@ The agent uses a ReAct-style graph where the **Chatbot Node** invokes Claude Hai
 ## Prerequisites
 
 **Local tools:**
+
 - **Python 3.13+**
 - **uv** - Fast Python package manager. Install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - **Node.js** - Required for AWS CDK CLI
 
 **AWS tools:**
+
 - **AWS CLI** - Configured with credentials (default profile or named profile)
 - **AWS CDK CLI** - Install with `npm install -g aws-cdk`
 
 **Accounts & API keys:**
+
 - **AWS Account** with permissions for Bedrock AgentCore, IAM, ECR, S3, CodeBuild, Secrets Manager, CloudWatch Logs, and CloudFormation
 - **Tavily API Key** - Get one at <https://tavily.com>
 
@@ -152,6 +155,7 @@ uv run pytest tests/ -v
 ```
 
 The test suite includes:
+
 - **Agent tests** (`tests/test_agent.py`): Tests for secret fetching, payload handling, resilience logic, and state management
 - **Agent function tests** (`tests/test_agent_functions.py`): Unit tests for agent functions including chatbot node, invocation handling, and error cases
 - **CDK tests** (`tests/test_cdk.py`): Infrastructure tests for Secrets Manager and IAM policy stacks
@@ -318,7 +322,7 @@ A NiceGUI-based web interface is available for testing the deployed agent with m
 make ui
 ```
 
-Then open http://localhost:8080 in your browser.
+Then open <http://localhost:8080> in your browser.
 
 **Features:**
 
@@ -573,6 +577,7 @@ FALLBACK_MODEL_ID=global.anthropic.claude-sonnet-4-5-20250929-v1:0
 ```
 
 **Model Fallback Behavior:**
+
 - The agent retries the primary model up to 3 times with exponential backoff on throttling/service errors
 - If retries are exhausted, it automatically falls back to the secondary model
 - Both models have the same tools bound for consistent behavior
@@ -638,15 +643,16 @@ Running this agent incurs costs from multiple AWS services:
 ### Container Security
 
 - Container images are stored in ECR but **not actively scanned** for vulnerabilities
-- Enable ECR scanning for production deployments:
-  ```bash
-  # Enable scan-on-push for the agent's ECR repository
-  aws ecr put-image-scanning-configuration \
-      --repository-name bedrock-agentcore-<agent_name> \
-      --image-scanning-configuration scanOnPush=true \
-      --region <your-region>
-  ```
+- Enable ECR scanning for production deployments (see command below)
 - For continuous scanning, consider enabling [Amazon Inspector](https://docs.aws.amazon.com/inspector/latest/user/scanning-ecr.html) enhanced scanning
+
+```bash
+# Enable scan-on-push for the agent's ECR repository
+aws ecr put-image-scanning-configuration \
+    --repository-name bedrock-agentcore-<agent_name> \
+    --image-scanning-configuration scanOnPush=true \
+    --region <your-region>
+```
 
 ### Recommendations
 

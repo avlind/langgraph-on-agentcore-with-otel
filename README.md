@@ -332,30 +332,9 @@ Then open http://localhost:8080 in your browser.
 | **CSV Export** | Export all results to CSV for analysis |
 | **CRUD Operations** | Add, edit, and delete prompts from the library |
 
-**UI Layout:**
+**Screenshot:**
 
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│  AgentCore Testing Dashboard                      [Dark Mode]   │
-├────────────────────────────┬────────────────────────────────────┤
-│  Prompt Library            │  Execution                         │
-│  ┌──────────────────────┐  │  AWS Profile: [PowerUser    ▼]    │
-│  │ □ AWS News      tech │  │  Concurrent:  ═══●═══════  3      │
-│  │ □ Weather      gen   │  │  Timeout:     [120] sec           │
-│  │ □ Simple Test  test  │  │                                   │
-│  │ ...                  │  │  [Run Selected] [Run All]         │
-│  └──────────────────────┘  │  Progress: ████████░░ 8/10        │
-│  [Add] [Delete]            │  ✓ 6 success  ✗ 2 failed          │
-│  [Select All] [None]       │                                   │
-├────────────────────────────┴────────────────────────────────────┤
-│  Results                                    [Export CSV] [Clear]│
-│  ┌──────────────────────────────────────────────────────────────┤
-│  │ ✓ AWS News        12.3s  [▼]                                │
-│  │ ✓ Weather Query    8.1s  [▼]                                │
-│  │ ✗ Stock Price      4.2s  [▼] Error: timeout                 │
-│  └──────────────────────────────────────────────────────────────┘
-└─────────────────────────────────────────────────────────────────┘
-```
+![AgentCore Testing Dashboard](docs/ui-screenshot.png)
 
 **Prompt Storage:** Prompts are stored in `ui/prompts.json` and persist across sessions.
 

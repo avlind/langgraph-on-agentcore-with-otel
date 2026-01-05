@@ -2,7 +2,7 @@
 # Run 'make help' to see available targets
 # Uses uv for dependency management
 
-.PHONY: help setup test lint deploy destroy clean status logs invoke
+.PHONY: help setup test lint deploy destroy clean status logs invoke ui
 
 # Default AWS profile (override with: make deploy PROFILE=YourProfile)
 PROFILE ?=
@@ -42,12 +42,12 @@ test-cov: ## Run tests with coverage report
 	uv run pytest --cov=. --cov-report=term-missing
 
 lint: ## Run linter and format check (ruff)
-	uv run ruff check langgraph_agent_web_search.py resilience.py cdk/
-	uv run ruff format --check langgraph_agent_web_search.py resilience.py cdk/
+	uv run ruff check langgraph_agent_web_search.py cdk/ ui/
+	uv run ruff format --check langgraph_agent_web_search.py cdk/ ui/
 
 format: ## Format code and fix lint issues (ruff)
-	uv run ruff check --fix langgraph_agent_web_search.py resilience.py cdk/
-	uv run ruff format langgraph_agent_web_search.py resilience.py cdk/
+	uv run ruff check --fix langgraph_agent_web_search.py cdk/ ui/
+	uv run ruff format langgraph_agent_web_search.py cdk/ ui/
 
 deploy: ## Deploy agent to AWS (use PROFILE=name for SSO)
 	uv run python -m scripts.deploy $(PROFILE_ARG)
@@ -76,6 +76,10 @@ PROMPT ?= What is the weather in Seattle?
 
 invoke: ## Test the deployed agent
 	$(AWS_PROFILE_PREFIX) uv run agentcore invoke '{"prompt": "$(PROMPT)"}'
+
+ui: ## Launch the agent testing web UI
+	@uv sync --extra ui --extra deploy --quiet
+	uv run python -m ui.app
 
 clean: ## Remove build artifacts and cache files
 	rm -rf .pytest_cache

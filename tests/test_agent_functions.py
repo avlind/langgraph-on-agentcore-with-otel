@@ -12,7 +12,7 @@ from botocore.exceptions import ClientError
 
 
 class TestFetchTavilyApiKey:
-    """Tests for the fetch_tavily_api_key function."""
+    """Tests for the fetch_tavily_api_key_from_secrets_manager function."""
 
     @pytest.fixture
     def mock_secrets_client(self):
@@ -28,9 +28,9 @@ class TestFetchTavilyApiKey:
 
         with patch("boto3.client", return_value=mock_secrets_client):
             # Import inside patch to avoid module-level side effects
-            from langgraph_agent_web_search import fetch_tavily_api_key
+            from langgraph_agent_web_search import fetch_tavily_api_key_from_secrets_manager
 
-            result = fetch_tavily_api_key()
+            result = fetch_tavily_api_key_from_secrets_manager()
 
         assert result == "tavily-test-key-123"
         mock_secrets_client.get_secret_value.assert_called_once()
@@ -43,10 +43,10 @@ class TestFetchTavilyApiKey:
         )
 
         with patch("boto3.client", return_value=mock_secrets_client):
-            from langgraph_agent_web_search import fetch_tavily_api_key
+            from langgraph_agent_web_search import fetch_tavily_api_key_from_secrets_manager
 
             with caplog.at_level(logging.ERROR):
-                result = fetch_tavily_api_key()
+                result = fetch_tavily_api_key_from_secrets_manager()
 
         assert result is None
         assert "not found" in caplog.text.lower()
@@ -59,10 +59,10 @@ class TestFetchTavilyApiKey:
         )
 
         with patch("boto3.client", return_value=mock_secrets_client):
-            from langgraph_agent_web_search import fetch_tavily_api_key
+            from langgraph_agent_web_search import fetch_tavily_api_key_from_secrets_manager
 
             with caplog.at_level(logging.ERROR):
-                result = fetch_tavily_api_key()
+                result = fetch_tavily_api_key_from_secrets_manager()
 
         assert result is None
         assert "access denied" in caplog.text.lower()
@@ -75,10 +75,10 @@ class TestFetchTavilyApiKey:
         )
 
         with patch("boto3.client", return_value=mock_secrets_client):
-            from langgraph_agent_web_search import fetch_tavily_api_key
+            from langgraph_agent_web_search import fetch_tavily_api_key_from_secrets_manager
 
             with caplog.at_level(logging.ERROR):
-                result = fetch_tavily_api_key()
+                result = fetch_tavily_api_key_from_secrets_manager()
 
         assert result is None
         assert "invalid request" in caplog.text.lower()
@@ -91,10 +91,10 @@ class TestFetchTavilyApiKey:
         )
 
         with patch("boto3.client", return_value=mock_secrets_client):
-            from langgraph_agent_web_search import fetch_tavily_api_key
+            from langgraph_agent_web_search import fetch_tavily_api_key_from_secrets_manager
 
             with caplog.at_level(logging.ERROR):
-                result = fetch_tavily_api_key()
+                result = fetch_tavily_api_key_from_secrets_manager()
 
         assert result is None
         assert "UnknownError" in caplog.text
@@ -104,10 +104,10 @@ class TestFetchTavilyApiKey:
         mock_secrets_client.get_secret_value.side_effect = RuntimeError("Network failure")
 
         with patch("boto3.client", return_value=mock_secrets_client):
-            from langgraph_agent_web_search import fetch_tavily_api_key
+            from langgraph_agent_web_search import fetch_tavily_api_key_from_secrets_manager
 
             with caplog.at_level(logging.ERROR):
-                result = fetch_tavily_api_key()
+                result = fetch_tavily_api_key_from_secrets_manager()
 
         assert result is None
         assert "unexpected error" in caplog.text.lower()

@@ -72,6 +72,7 @@ class InvocationResult:
     started_at: datetime | None = None
     completed_at: datetime | None = None
     session_id: str | None = None
+    agent: "AgentRuntime | None" = None
 
     @property
     def duration_seconds(self) -> float | None:
@@ -90,9 +91,27 @@ class InvocationResult:
 
 
 @dataclass
+class AgentRuntime:
+    """A deployed AgentCore runtime."""
+
+    name: str
+    arn: str
+    runtime_id: str
+    status: str
+    region: str
+
+    @property
+    def display_name(self) -> str:
+        """Format for display in dropdown."""
+        return f"{self.name} ({self.status})"
+
+
+@dataclass
 class AppConfig:
     """Application configuration."""
 
     aws_profile: str = "default"
+    aws_region: str = "us-east-2"
     max_concurrent: int = 3
     timeout_seconds: int = 120
+    selected_agent: AgentRuntime | None = None

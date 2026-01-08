@@ -1,8 +1,14 @@
-"""Parse AWS config file for available profiles."""
+"""AWS configuration and agent runtime discovery."""
 
 import configparser
 import os
 from pathlib import Path
+
+import boto3
+from botocore.exceptions import ClientError
+from dotenv import dotenv_values
+
+from .models import AgentRuntime
 
 
 def get_aws_profiles() -> list[str]:
@@ -85,6 +91,20 @@ def get_agentcore_region() -> str:
     return config.get("region", os.environ.get("AWS_REGION", "us-east-1"))
 
 
+def get_default_agent_name() -> str | None:
+    """
+    Get the default agent name from .env file.
+
+    Returns the AGENT_NAME value if found, None otherwise.
+    """
+    env_path = Path.cwd() / ".env"
+    if not env_path.exists():
+        return None
+
+    env_values = dotenv_values(env_path)
+    return env_values.get("AGENT_NAME")
+
+
 def get_agentcore_config() -> dict:
     """
     Get agentcore configuration from .bedrock_agentcore.yaml.
@@ -128,42 +148,74 @@ def get_agentcore_config() -> dict:
         return default_config
 
 
-def build_cloudwatch_session_url(session_id: str) -> str | None:
+def build_cloudwatch_session_url(session_id: str, agent: AgentRuntime | None = None) -> str | None:
     """
     Build CloudWatch GenAI Observability URL for a specific session.
 
-    Returns the full deep link URL, or None if config is incomplete.
+    Returns the GenAI Observability dashboard URL for the session.
+    URL format: https://{region}.console.aws.amazon.com/cloudwatch/home?region={region}#gen-ai-observability/agent-core/session/{session_id}
     """
-    from urllib.parse import quote
+    if agent:
+        region = agent.region
+    else:
+        config = get_agentcore_config()
+        if not config["region"]:
+            return None
+        region = config["region"]
 
-    config = get_agentcore_config()
-
-    # Require all fields for deep link
-    if not all([config["region"], config["account"], config["agent_name"], config["agent_id"]]):
+    if not region:
         return None
 
-    region = config["region"]
-    account = config["account"]
-    agent_name = config["agent_name"]
-    agent_id = config["agent_id"]
-    endpoint = config["endpoint_name"]
-
-    # Build resource ARN (URL encoded)
-    resource_arn = (
-        f"arn:aws:bedrock-agentcore:{region}:{account}:"
-        f"runtime/{agent_id}/runtime-endpoint/{endpoint}:{endpoint}"
-    )
-    encoded_arn = quote(resource_arn, safe="")
-
-    # Build service name
-    service_name = f"{agent_name}.{endpoint}"
-
-    # Build full URL
+    # Build simple GenAI Observability session URL
     url = (
-        f"https://{region}.console.aws.amazon.com/cloudwatch/home?region={region}"
-        f"#gen-ai-observability/agent-core/agent-alias/{agent_id}/endpoint/{endpoint}"
-        f"/agent/{agent_name}/session/{session_id}"
-        f"?resourceId={encoded_arn}&serviceName={service_name}"
+        f"https://{region}.console.aws.amazon.com/cloudwatch/home"
+        f"?region={region}#gen-ai-observability/agent-core/session/{session_id}"
     )
 
     return url
+
+
+def list_agent_runtimes(
+    profile: str | None = None, region: str = "us-east-2"
+) -> list[AgentRuntime]:
+    """
+    List all deployed AgentCore runtimes.
+
+    Args:
+        profile: AWS profile to use (optional)
+        region: AWS region to query
+
+    Returns:
+        List of AgentRuntime objects
+    """
+    try:
+        if profile:
+            session = boto3.Session(profile_name=profile)
+        else:
+            session = boto3.Session()
+
+        client = session.client("bedrock-agentcore-control", region_name=region)
+        response = client.list_agent_runtimes()
+
+        runtimes = []
+        for runtime in response.get("agentRuntimes", []):
+            runtimes.append(
+                AgentRuntime(
+                    name=runtime.get("agentRuntimeName", ""),
+                    arn=runtime.get("agentRuntimeArn", ""),
+                    runtime_id=runtime.get("agentRuntimeId", ""),
+                    status=runtime.get("status", "UNKNOWN"),
+                    region=region,
+                )
+            )
+
+        # Sort by name, with READY agents first
+        runtimes.sort(key=lambda r: (r.status != "READY", r.name.lower()))
+        return runtimes
+
+    except ClientError as e:
+        print(f"Error listing agent runtimes: {e}")
+        return []
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return []

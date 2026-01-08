@@ -1,17 +1,16 @@
-"""Destroy LangGraph agent and clean up AWS resources."""
+"""Destroy LangGraph agent and clean up AWS resources using CDK.
 
+Since all resources (including AgentCore Runtime) are managed by CDK,
+this script simply runs `cdk destroy --all`.
+"""
+
+import time
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
-from .lib.aws import (
-    delete_ecr_repository,
-    delete_secret,
-    delete_stack_and_wait,
-    get_session,
-)
-from .lib.commands import CommandError, check_command_exists, run_agentcore_destroy
+from .lib.commands import CommandError, check_command_exists
 from .lib.config import ConfigurationError, get_destroy_config
 from .lib.console import (
     console,
@@ -21,10 +20,57 @@ from .lib.console import (
     print_header,
     print_step,
     print_success,
-    print_warning,
 )
 
 app = typer.Typer(help="Destroy LangGraph agent and clean up AWS resources")
+
+
+def run_cdk_destroy(
+    config,
+    profile: str | None = None,
+    force: bool = False,
+) -> bool:
+    """Run CDK destroy --all to remove all stacks."""
+    import subprocess
+
+    cdk_dir = Path("cdk")
+
+    # Get absolute path to project root
+    source_path = str(Path.cwd().absolute())
+
+    cmd = [
+        "cdk",
+        "destroy",
+        "--all",
+        "--context",
+        f"secret_name={config.secret_name}",
+        "--context",
+        "tavily_api_key=dummy",  # Not needed for destroy but required for CDK synth
+        "--context",
+        f"agent_name={config.agent_name}",
+        "--context",
+        f"model_id={config.model_id}",
+        "--context",
+        f"fallback_model_id={config.fallback_model_id}",
+        "--context",
+        f"source_path={source_path}",
+    ]
+
+    if force:
+        cmd.append("--force")
+
+    if profile:
+        cmd.extend(["--profile", profile])
+
+    console.print("   Running: cdk destroy --all ...")
+
+    result = subprocess.run(
+        cmd,
+        cwd=cdk_dir,
+        capture_output=False,  # Stream output to console
+    )
+
+    return result.returncode == 0
 
 
 @app.command()
@@ -33,124 +79,66 @@ def destroy(
         str | None,
         typer.Option("--profile", help="AWS CLI profile name (for SSO users)"),
     ] = None,
-    delete_secret_flag: Annotated[
+    force: Annotated[
         bool,
-        typer.Option("--delete-secret", help="Also delete the Secrets Manager secret"),
-    ] = False,
-    delete_ecr: Annotated[
-        bool,
-        typer.Option("--delete-ecr", help="Also delete the ECR repository"),
+        typer.Option("--force", "-f", help="Skip confirmation prompts"),
     ] = False,
     all_resources: Annotated[
         bool,
-        typer.Option("--all", help="Delete everything (agent + secret + ECR)"),
+        typer.Option("--all", help="Destroy all resources (same as default behavior)"),
     ] = False,
 ) -> None:
     """
-    Destroy the LangGraph agent and optionally clean up resources.
+    Destroy the LangGraph agent and all AWS resources.
 
-    By default, only the AgentCore agent and IAM policy stack are destroyed.
-    The secret and ECR repo are preserved for faster redeployment.
-
-    Use --all to delete everything, or use individual flags:
-
-    --delete-secret: Delete the Secrets Manager secret
-
-    --delete-ecr: Delete the ECR repository
+    This command runs `cdk destroy --all` to remove:
+    - RuntimeStack (AgentCore Runtime)
+    - AgentInfraStack (ECR, CodeBuild, IAM, Memory)
+    - SecretsStack (Secrets Manager secret)
     """
+    start_time = time.time()
+
     try:
-        # Check agentcore is available
-        if not check_command_exists("agentcore"):
-            print_error("agentcore command not found.")
+        # Check cdk is available
+        if not check_command_exists("cdk"):
+            print_error("AWS CDK CLI not found.")
             console.print()
-            console.print("   Run this script via uv or make:")
+            console.print("   Install it globally with:")
             console.print()
-            console.print("      uv run python -m scripts.destroy --profile YourProfile")
-            console.print("      # or")
-            console.print("      make destroy PROFILE=YourProfile")
+            console.print("      npm install -g aws-cdk")
             console.print()
             raise typer.Exit(1)
 
         # Load configuration
         config = get_destroy_config(profile)
 
-        # Handle --all flag
-        if all_resources:
-            delete_secret_flag = True
-            delete_ecr = True
-
-        # Calculate total steps
-        total_steps = 2  # IAM policy stack + AgentCore agent
-        if delete_secret_flag:
-            total_steps += 1
-        if delete_ecr:
-            total_steps += 1
-
-        current_step = 0
-
         # Print header
-        print_header("LangGraph Agent Cleanup", emoji="🗑️")
+        print_header("LangGraph Agent Cleanup (CDK)")
         print_config(
             region=config.aws_region,
             agent_name=config.agent_name,
-            secret_name=config.secret_name if delete_secret_flag else None,
+            secret_name=config.secret_name,
             profile=config.aws_profile,
-            delete_secret=delete_secret_flag,
-            delete_ecr=delete_ecr,
         )
 
-        session = get_session(profile)
+        # Step 1: Destroy all CDK stacks
+        print_step("1/1", "Destroying all CDK stacks...")
 
-        # Step 1: Destroy IAM Policy Stack
-        current_step += 1
-        print_step(f"{current_step}/{total_steps}", "Destroying IAM policy stack...")
-        delete_stack_and_wait(session, "IamPolicyStack", config.aws_region)
+        if not run_cdk_destroy(config, profile, force):
+            print_error("CDK destroy failed")
+            raise typer.Exit(1)
 
-        # Step 2: Destroy AgentCore agent
-        current_step += 1
-        print_step(f"{current_step}/{total_steps}", "Destroying AgentCore agent...")
+        print_success("All CDK stacks destroyed")
 
-        config_path = Path(".bedrock_agentcore.yaml")
-        if config_path.exists():
-            result = run_agentcore_destroy(config.agent_name, profile)
-            if result.success:
-                print_success("Agent destroyed")
-            else:
-                print_warning("Agent destruction may have failed, continuing...")
-        else:
-            print_warning("No .bedrock_agentcore.yaml found, agent may already be destroyed")
+        # Success message with elapsed time
+        elapsed = time.time() - start_time
+        minutes, seconds = divmod(int(elapsed), 60)
+        time_str = f"{minutes}m {seconds}s" if minutes else f"{seconds}s"
 
-        # Step 3: Delete Secrets Stack (if requested)
-        if delete_secret_flag:
-            current_step += 1
-            print_step(f"{current_step}/{total_steps}", "Destroying Secrets Manager stack...")
-
-            delete_stack_and_wait(session, "SecretsStack", config.aws_region)
-
-            # Also delete the actual secret (has RETAIN policy)
-            delete_secret(session, config.secret_name, config.aws_region)
-
-        # Step 4: Delete ECR repository (if requested)
-        if delete_ecr:
-            current_step += 1
-            print_step(f"{current_step}/{total_steps}", "Deleting ECR repository...")
-
-            ecr_repo = f"bedrock-agentcore-{config.agent_name}"
-            delete_ecr_repository(session, ecr_repo, config.aws_region)
-
-        # Success message
-        print_final_success("Cleanup complete!")
-
-        # Show preserved resources
-        if not delete_secret_flag or not delete_ecr:
-            console.print()
-            console.print("Resources preserved (use flags to delete):")
-            if not delete_secret_flag:
-                console.print("   • Secrets Manager secret (--delete-secret)")
-            if not delete_ecr:
-                console.print("   • ECR repository (--delete-ecr)")
-            console.print()
-            console.print("To delete everything: python -m scripts.destroy --all")
+        print_final_success(f"Cleanup complete! (Total time: {time_str})")
+        console.print()
+        console.print("[bold]To redeploy:[/bold]")
+        console.print("  make deploy PROFILE=<profile>")
 
     except ConfigurationError:
         raise typer.Exit(1)

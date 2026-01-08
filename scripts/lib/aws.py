@@ -63,9 +63,7 @@ def get_stack_output(
         return None
 
 
-def delete_stack_and_wait(
-    session: boto3.Session, stack_name: str, region: str
-) -> bool:
+def delete_stack_and_wait(session: boto3.Session, stack_name: str, region: str) -> bool:
     """Delete a CloudFormation stack and wait for completion."""
     cf = session.client("cloudformation", region_name=region)
 
@@ -86,9 +84,7 @@ def delete_stack_and_wait(
         return True
 
 
-def delete_secret(
-    session: boto3.Session, secret_id: str, region: str, force: bool = True
-) -> bool:
+def delete_secret(session: boto3.Session, secret_id: str, region: str, force: bool = True) -> bool:
     """Delete a Secrets Manager secret."""
     sm = session.client("secretsmanager", region_name=region)
 

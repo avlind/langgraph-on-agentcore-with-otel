@@ -1,4 +1,4 @@
-"""Subprocess execution for external tools (agentcore, cdk)."""
+"""Subprocess execution for external tools (cdk)."""
 
 import os
 import shutil
@@ -34,22 +34,7 @@ def check_command_exists(cmd: str) -> bool:
 
 
 def check_required_commands() -> None:
-    """Check that agentcore and cdk are available."""
-    if not check_command_exists("agentcore"):
-        print_error("agentcore command not found.")
-        print_error("")
-        print_error("   Run this script via uv or make:")
-        print_error("")
-        print_error("      uv run python -m scripts.deploy --profile YourProfile")
-        print_error("      # or")
-        print_error("      make deploy PROFILE=YourProfile")
-        print_error("")
-        print_error("   If dependencies aren't installed yet:")
-        print_error("")
-        print_error("      uv sync --extra deploy")
-        print_error("")
-        raise CommandError("agentcore not found")
-
+    """Check that cdk is available."""
     if not check_command_exists("cdk"):
         print_error("AWS CDK CLI not found.")
         print_error("")
@@ -105,87 +90,6 @@ def run_cdk_deploy(
         cmd,
         env={**os.environ, **env},
         cwd=cwd,
-        capture_output=False,
-    )
-
-    return CommandResult(
-        returncode=result.returncode,
-        stdout="",
-        stderr="",
-    )
-
-
-def run_agentcore_configure(
-    entrypoint: str,
-    agent_name: str,
-    region: str,
-    profile: str | None = None,
-) -> CommandResult:
-    """Configure agent for container deployment."""
-    cmd = [
-        "agentcore",
-        "configure",
-        "-e",
-        entrypoint,
-        "-n",
-        agent_name,
-        "-dt",
-        "container",
-        "-r",
-        region,
-        "--non-interactive",
-    ]
-
-    env = {}
-    if profile:
-        env["AWS_PROFILE"] = profile
-
-    return run_command(cmd, env=env)
-
-
-def run_agentcore_deploy(
-    env_vars: dict[str, str],
-    profile: str | None = None,
-) -> CommandResult:
-    """Deploy agent to AgentCore with environment variables."""
-    cmd = ["agentcore", "deploy", "--auto-update-on-conflict"]
-
-    for key, value in env_vars.items():
-        cmd.extend(["--env", f"{key}={value}"])
-
-    env = {}
-    if profile:
-        env["AWS_PROFILE"] = profile
-
-    # Run deploy - don't capture output so user sees progress
-    result = subprocess.run(
-        cmd,
-        env={**os.environ, **env},
-        capture_output=False,
-    )
-
-    return CommandResult(
-        returncode=result.returncode,
-        stdout="",
-        stderr="",
-    )
-
-
-def run_agentcore_destroy(
-    agent_name: str,
-    profile: str | None = None,
-) -> CommandResult:
-    """Destroy an AgentCore agent."""
-    cmd = ["agentcore", "destroy", "--agent", agent_name, "--force"]
-
-    env = {}
-    if profile:
-        env["AWS_PROFILE"] = profile
-
-    # Run destroy - don't capture output so user sees progress
-    result = subprocess.run(
-        cmd,
-        env={**os.environ, **env},
         capture_output=False,
     )
 

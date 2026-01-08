@@ -4,14 +4,29 @@ import os
 import sys
 
 import pytest
-from aws_cdk import App
-from aws_cdk.assertions import Match, Template
 
-# Add cdk directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "cdk"))
+# Skip all tests in this module if aws_cdk is not installed
+# (aws_cdk is in the optional 'deploy' dependencies)
+try:
+    from aws_cdk import App, Environment
+    from aws_cdk.assertions import Match, Template
 
-from stacks.iam_stack import IamPolicyStack
-from stacks.secrets_stack import SecretsStack
+    HAS_CDK = True
+except ImportError:
+    HAS_CDK = False
+
+pytestmark = pytest.mark.skipif(
+    not HAS_CDK, reason="aws_cdk not installed (use 'uv sync --extra deploy')"
+)
+
+if HAS_CDK:
+    # Add cdk directory to path for imports
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "cdk"))
+
+    from stacks.agent_infra_stack import AgentInfraStack
+    from stacks.memory_stack import MemoryStack
+    from stacks.runtime_stack import RuntimeStack
+    from stacks.secrets_stack import SecretsStack
 
 
 class TestSecretsStack:
@@ -86,118 +101,243 @@ class TestSecretsStack:
             )
 
 
-class TestIamPolicyStack:
-    """Tests for the IamPolicyStack CDK stack."""
-
-    VALID_ROLE_ARN = "arn:aws:iam::123456789012:role/TestRole"
-    VALID_SECRET_ARN = "arn:aws:secretsmanager:us-east-2:123456789012:secret:test-secret-abc123"
+class TestAgentInfraStack:
+    """Tests for the AgentInfraStack CDK stack."""
 
     @pytest.fixture
-    def template(self):
-        """Create a template from IamPolicyStack."""
+    def template(self, tmp_path):
+        """Create a template from AgentInfraStack."""
+        # Create a minimal source directory with required files
+        (tmp_path / "langgraph_agent_web_search.py").write_text("# agent code")
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = 'test'")
+        (tmp_path / "Dockerfile").write_text("FROM python:3.13")
+
         app = App()
-        stack = IamPolicyStack(
+        stack = AgentInfraStack(
             app,
-            "TestIamPolicyStack",
-            execution_role_arn=self.VALID_ROLE_ARN,
-            secret_arn=self.VALID_SECRET_ARN,
+            "TestAgentInfraStack",
+            secret_name="test-secret",
+            agent_name="test-agent",
+            model_id="anthropic.claude-haiku",
+            fallback_model_id="anthropic.claude-sonnet",
+            source_path=str(tmp_path),
+            env=Environment(account="123456789012", region="us-east-2"),
         )
         return Template.from_stack(stack)
 
-    def test_policy_created(self, template):
-        """Test that an IAM policy is created."""
-        template.resource_count_is("AWS::IAM::Policy", 1)
+    def test_ecr_repository_created(self, template):
+        """Test that an ECR repository is created."""
+        template.resource_count_is("AWS::ECR::Repository", 1)
 
-    def test_policy_has_correct_name(self, template):
-        """Test that the policy has the correct name."""
+    def test_ecr_repository_has_correct_name(self, template):
+        """Test that ECR repository has normalized name."""
         template.has_resource_properties(
-            "AWS::IAM::Policy",
-            {"PolicyName": "SecretsManagerAccess"},
+            "AWS::ECR::Repository",
+            {"RepositoryName": "agentcore-test-agent"},
         )
 
-    def test_policy_grants_get_secret_value(self, template):
-        """Test that policy allows secretsmanager:GetSecretValue."""
+    def test_ecr_has_image_scanning_enabled(self, template):
+        """Test that ECR repository has image scanning enabled."""
         template.has_resource_properties(
-            "AWS::IAM::Policy",
+            "AWS::ECR::Repository",
+            {"ImageScanningConfiguration": {"ScanOnPush": True}},
+        )
+
+    def test_codebuild_project_created(self, template):
+        """Test that a CodeBuild project is created."""
+        template.resource_count_is("AWS::CodeBuild::Project", 1)
+
+    def test_codebuild_project_has_correct_name(self, template):
+        """Test that CodeBuild project has correct name."""
+        template.has_resource_properties(
+            "AWS::CodeBuild::Project",
+            {"Name": "test-agent-builder"},
+        )
+
+    def test_codebuild_has_privileged_mode(self, template):
+        """Test that CodeBuild has privileged mode for Docker builds."""
+        template.has_resource_properties(
+            "AWS::CodeBuild::Project",
+            {"Environment": Match.object_like({"PrivilegedMode": True})},
+        )
+
+    def test_execution_role_created(self, template):
+        """Test that an execution role is created."""
+        # Should have at least 2 roles: CodeBuild role and Execution role
+        template.resource_count_is("AWS::IAM::Role", 2)
+
+    def test_execution_role_has_correct_name(self, template):
+        """Test that execution role has correct name."""
+        template.has_resource_properties(
+            "AWS::IAM::Role",
+            {"RoleName": "AgentCore-test-agent-ExecutionRole"},
+        )
+
+    def test_execution_role_trusts_agentcore(self, template):
+        """Test that execution role trusts bedrock-agentcore service."""
+        template.has_resource_properties(
+            "AWS::IAM::Role",
             {
-                "PolicyDocument": {
-                    "Statement": Match.array_with(
-                        [
-                            Match.object_like(
-                                {
-                                    "Action": "secretsmanager:GetSecretValue",
-                                    "Effect": "Allow",
-                                }
-                            )
-                        ]
-                    )
-                }
+                "AssumeRolePolicyDocument": Match.object_like(
+                    {
+                        "Statement": Match.array_with(
+                            [
+                                Match.object_like(
+                                    {
+                                        "Principal": {
+                                            "Service": "bedrock-agentcore.amazonaws.com"
+                                        }
+                                    }
+                                )
+                            ]
+                        )
+                    }
+                )
             },
         )
 
-    def test_policy_uses_exact_secret_arn(self, template):
-        """Test that policy uses exact secret ARN (no wildcard) for least privilege."""
+    def test_outputs_exist(self, template):
+        """Test that required outputs are defined."""
+        template.has_output("ECRRepositoryUri", {})
+        template.has_output("CodeBuildProjectName", {})
+        template.has_output("ExecutionRoleArn", {})
+
+
+class TestMemoryStack:
+    """Tests for the MemoryStack CDK stack."""
+
+    @pytest.fixture
+    def template(self):
+        """Create a template from MemoryStack."""
+        app = App()
+        stack = MemoryStack(
+            app,
+            "TestMemoryStack",
+            agent_name="test-agent",
+        )
+        return Template.from_stack(stack)
+
+    def test_memory_created(self, template):
+        """Test that AgentCore Memory is created."""
+        template.resource_count_is("AWS::BedrockAgentCore::Memory", 1)
+
+    def test_memory_has_correct_name(self, template):
+        """Test that Memory has correct name pattern."""
         template.has_resource_properties(
-            "AWS::IAM::Policy",
+            "AWS::BedrockAgentCore::Memory",
+            {"Name": "test_agent_memory"},
+        )
+
+    def test_memory_has_expiry_duration(self, template):
+        """Test that Memory has event expiry duration set."""
+        template.has_resource_properties(
+            "AWS::BedrockAgentCore::Memory",
+            {"EventExpiryDuration": 30},
+        )
+
+    def test_outputs_exist(self, template):
+        """Test that required outputs are defined."""
+        template.has_output("MemoryArn", {})
+        template.has_output("MemoryName", {})
+
+    def test_empty_agent_name_raises_error(self):
+        """Test that empty agent_name raises ValueError."""
+        app = App()
+        with pytest.raises(ValueError, match="agent_name cannot be empty"):
+            MemoryStack(
+                app,
+                "TestStack",
+                agent_name="",
+            )
+
+    def test_whitespace_only_agent_name_raises_error(self):
+        """Test that whitespace-only agent_name raises ValueError."""
+        app = App()
+        with pytest.raises(ValueError, match="agent_name cannot be empty"):
+            MemoryStack(
+                app,
+                "TestStack",
+                agent_name="   ",
+            )
+
+
+class TestRuntimeStack:
+    """Tests for the RuntimeStack CDK stack."""
+
+    @pytest.fixture
+    def template(self):
+        """Create a template from RuntimeStack."""
+        app = App()
+        stack = RuntimeStack(
+            app,
+            "TestRuntimeStack",
+            agent_name="test-agent",
+            model_id="anthropic.claude-haiku",
+            fallback_model_id="anthropic.claude-sonnet",
+            secret_name="test-secret",
+            ecr_repository_uri="123456789012.dkr.ecr.us-east-2.amazonaws.com/test-repo",
+            execution_role_arn="arn:aws:iam::123456789012:role/TestExecutionRole",
+            env=Environment(account="123456789012", region="us-east-2"),
+        )
+        return Template.from_stack(stack)
+
+    def test_runtime_created(self, template):
+        """Test that AgentCore Runtime is created."""
+        template.resource_count_is("AWS::BedrockAgentCore::Runtime", 1)
+
+    def test_runtime_has_correct_name(self, template):
+        """Test that Runtime has correct name."""
+        template.has_resource_properties(
+            "AWS::BedrockAgentCore::Runtime",
+            {"AgentRuntimeName": "test-agent"},
+        )
+
+    def test_runtime_has_container_config(self, template):
+        """Test that Runtime has container configuration."""
+        template.has_resource_properties(
+            "AWS::BedrockAgentCore::Runtime",
             {
-                "PolicyDocument": {
-                    "Statement": Match.array_with(
-                        [
-                            Match.object_like(
-                                {
-                                    "Resource": self.VALID_SECRET_ARN,
-                                }
-                            )
-                        ]
-                    )
-                }
+                "AgentRuntimeArtifact": Match.object_like(
+                    {
+                        "ContainerConfiguration": Match.object_like(
+                            {"ContainerUri": Match.string_like_regexp(".*:latest")}
+                        )
+                    }
+                )
             },
         )
 
-    def test_output_exists(self, template):
-        """Test that PolicyName output is defined."""
-        template.has_output("PolicyName", {})
+    def test_runtime_has_environment_variables(self, template):
+        """Test that Runtime has required environment variables."""
+        template.has_resource_properties(
+            "AWS::BedrockAgentCore::Runtime",
+            {
+                "EnvironmentVariables": Match.object_like(
+                    {
+                        "AWS_REGION": "us-east-2",
+                        "SECRET_NAME": "test-secret",
+                        "MODEL_ID": "anthropic.claude-haiku",
+                        "FALLBACK_MODEL_ID": "anthropic.claude-sonnet",
+                    }
+                )
+            },
+        )
 
-    def test_empty_role_arn_raises_error(self):
-        """Test that empty execution_role_arn raises ValueError."""
-        app = App()
-        with pytest.raises(ValueError, match="execution_role_arn cannot be empty"):
-            IamPolicyStack(
-                app,
-                "TestStack",
-                execution_role_arn="",
-                secret_arn=self.VALID_SECRET_ARN,
-            )
+    def test_runtime_has_public_network_mode(self, template):
+        """Test that Runtime has public network mode."""
+        template.has_resource_properties(
+            "AWS::BedrockAgentCore::Runtime",
+            {"NetworkConfiguration": {"NetworkMode": "PUBLIC"}},
+        )
 
-    def test_invalid_role_arn_format_raises_error(self):
-        """Test that invalid role ARN format raises ValueError."""
-        app = App()
-        with pytest.raises(ValueError, match="Invalid IAM role ARN format"):
-            IamPolicyStack(
-                app,
-                "TestStack",
-                execution_role_arn="invalid-arn",
-                secret_arn=self.VALID_SECRET_ARN,
-            )
+    def test_runtime_has_http_protocol(self, template):
+        """Test that Runtime uses HTTP protocol."""
+        template.has_resource_properties(
+            "AWS::BedrockAgentCore::Runtime",
+            {"ProtocolConfiguration": "HTTP"},
+        )
 
-    def test_empty_secret_arn_raises_error(self):
-        """Test that empty secret_arn raises ValueError."""
-        app = App()
-        with pytest.raises(ValueError, match="secret_arn cannot be empty"):
-            IamPolicyStack(
-                app,
-                "TestStack",
-                execution_role_arn=self.VALID_ROLE_ARN,
-                secret_arn="",
-            )
-
-    def test_invalid_secret_arn_format_raises_error(self):
-        """Test that invalid secret ARN format raises ValueError."""
-        app = App()
-        with pytest.raises(ValueError, match="Invalid Secrets Manager ARN format"):
-            IamPolicyStack(
-                app,
-                "TestStack",
-                execution_role_arn=self.VALID_ROLE_ARN,
-                secret_arn="invalid-arn",
-            )
+    def test_outputs_exist(self, template):
+        """Test that required outputs are defined."""
+        template.has_output("RuntimeArn", {})
+        template.has_output("RuntimeId", {})

@@ -2,8 +2,6 @@
 CDK stack for Secrets Manager resources.
 
 This stack creates an AWS Secrets Manager secret to store the Tavily API key.
-The secret is created with RETAIN removal policy to preserve it across stack
-deletions (useful for iterative development).
 
 Usage:
     cdk deploy SecretsStack \\
@@ -65,7 +63,7 @@ class SecretsStack(Stack):
             "TavilyApiKey",
             secret_name=secret_name,
             secret_string_value=SecretValue.unsafe_plain_text(tavily_api_key),
-            removal_policy=RemovalPolicy.RETAIN,
+            removal_policy=RemovalPolicy.DESTROY,
             description="Tavily API key for LangGraph agent web search",
         )
 

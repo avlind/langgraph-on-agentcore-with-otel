@@ -49,6 +49,10 @@ htmlcov/
 
 # Documentation
 docs/
+README.md
+CLAUDE.md
+MODELFAILOVER.md
+LICENSE
 
 # CI/CD
 .github/
@@ -73,3 +77,14 @@ scripts/
 cdk/
 terraform/
 mcp/lambda/
+
+# Web UI (not needed in container)
+ui/
+
+# Build/dev files not needed at runtime
+Makefile
+*.sample
+.markdownlint.json
+.mcp.json
+.playwright-mcp/
+.claude/

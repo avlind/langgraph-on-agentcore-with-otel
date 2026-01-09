@@ -22,6 +22,7 @@ flowchart TB
     subgraph AWS["AWS Cloud"]
         subgraph AgentCore["Bedrock AgentCore"]
             Runtime[Agent Runtime]
+            Memory[Agent Memory]
             subgraph Agent["LangGraph Agent"]
                 Chatbot[Chatbot Node]
                 Tools[Tools Node]
@@ -32,10 +33,12 @@ flowchart TB
 
         Bedrock[Amazon Bedrock<br/>Claude Haiku]
         Secrets[Secrets Manager<br/>Tavily API Key]
+        ECR[ECR Repository]
 
         subgraph CDK["CDK Managed"]
             SecretsStack[SecretsStack]
-            IamStack[IamPolicyStack]
+            InfraStack[AgentInfraStack]
+            RuntimeStack[RuntimeStack]
         end
     end
 
@@ -45,22 +48,34 @@ flowchart TB
 
     User --> Runtime
     Runtime --> Agent
+    Runtime --> Memory
     Chatbot --> Bedrock
     Tools --> Tavily
     Runtime -.->|fetch secret| Secrets
+    Runtime -.->|pull image| ECR
     SecretsStack -.->|creates| Secrets
-    IamStack -.->|grants access| Secrets
+    InfraStack -.->|creates| ECR
+    RuntimeStack -.->|creates| Runtime
 ```
 
 The agent uses a ReAct-style graph where the **Chatbot Node** invokes Claude Haiku, and if a tool call is requested, the **Tools Node** executes the Tavily search and returns results back to the chatbot.
 
+> **Deep Dive:** See [Infrastructure as Code](#infrastructure-as-code) for detailed CDK stack documentation.
+
 ## Prerequisites
+
+**Supported platforms:**
+
+- **macOS** - Fully supported
+- **Linux** - Fully supported
+- **Windows** - Use [WSL (Windows Subsystem for Linux)](https://learn.microsoft.com/en-us/windows/wsl/install). Native Windows (PowerShell/CMD) is not supported due to Makefile and shell command dependencies.
 
 **Local tools:**
 
 - **Python 3.13+**
 - **uv** - Fast Python package manager. Install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - **Node.js** - Required for AWS CDK CLI
+- **make** - Pre-installed on macOS/Linux. On WSL, install with `sudo apt install make`
 
 **AWS tools:**
 
@@ -86,34 +101,39 @@ git clone <repository-url>
 cd langgraph-to-agentcore-sample
 ```
 
-### 2. Install Dependencies
+### 2. Install Dependencies (Optional)
 
-This project uses [uv](https://docs.astral.sh/uv/) for fast, reliable dependency management.
+This project uses [uv](https://docs.astral.sh/uv/) for fast, reliable dependency management. Each `make` command automatically installs its required dependencies, so you can skip this step and jump straight to configuration.
 
 ```bash
-# Using Makefile (recommended)
+# Install ALL dependencies upfront (local, deploy, ui)
 make setup
 
-# Or using uv directly
-uv sync --extra deploy
+# Or just run commands directly - they self-install what they need
+make local    # installs local deps
+make deploy   # installs deploy deps
+make ui       # installs ui + deploy deps
 ```
 
 > **Note:** No need to manually activate a virtual environment. Use `uv run <command>` or `make <target>` to run commands with the correct environment.
 
 ### 3. Configure Environment Variables
 
-Create a `.env` file from the sample:
+This project separates configuration from secrets for better security:
+
+- **`.env`** - Non-sensitive configuration (region, model IDs, agent name)
+- **`.secrets`** - Sensitive values like API keys (never committed to git)
+
+Create both files from the samples:
 
 ```bash
 cp .env.sample .env
+cp .secrets.sample .secrets
 ```
 
-Edit `.env` with your configuration:
+Edit `.env` with your deployment configuration:
 
 ```bash
-# Required - API Keys
-TAVILY_API_KEY=your-tavily-api-key-here
-
 # Deployment Configuration
 AWS_REGION=us-east-2
 AGENT_NAME=langgraph_agent_web_search
@@ -122,14 +142,28 @@ FALLBACK_MODEL_ID=global.anthropic.claude-sonnet-4-5-20250929-v1:0
 SECRET_NAME=langgraph-agent/tavily-api-key
 ```
 
+Edit `.secrets` with your API keys:
+
+```bash
+# Sensitive credentials - never commit this file!
+TAVILY_API_KEY=your-tavily-api-key-here
+```
+
+**Configuration variables (`.env`):**
+
 | Variable            | Description                                                              |
 | ------------------- | ------------------------------------------------------------------------ |
-| `TAVILY_API_KEY`    | Your Tavily API key (required)                                           |
 | `AWS_REGION`        | AWS region for deployment (default: `us-east-2`)                         |
 | `AGENT_NAME`        | Name for your agent in AgentCore (keep under 25 chars to avoid AWS limits) |
 | `MODEL_ID`          | Primary Bedrock model ID (default: Haiku)                                |
 | `FALLBACK_MODEL_ID` | Fallback model when primary is unavailable (default: Sonnet)             |
 | `SECRET_NAME`       | Name for the Secrets Manager secret                                      |
+
+**Secrets (`.secrets`):**
+
+| Variable         | Description                    |
+| ---------------- | ------------------------------ |
+| `TAVILY_API_KEY` | Your Tavily API key (required) |
 
 ### 4. Ensure AWS Credentials are Active
 
@@ -160,6 +194,63 @@ The test suite includes:
 - **Agent function tests** (`tests/test_agent_functions.py`): Unit tests for agent functions including chatbot node, invocation handling, and error cases
 - **CDK tests** (`tests/test_cdk.py`): Infrastructure tests for Secrets Manager and IAM policy stacks
 
+## AWS Profile Management
+
+Many `make` commands require AWS credentials (for Bedrock, deployment, etc.). You can set your AWS profile once and it will be used for all subsequent commands:
+
+```bash
+# Set your profile once
+make set-profile PROFILE=YourProfile
+
+# Now all commands use it automatically
+make local
+make deploy
+make invoke
+
+# Override for a single command if needed
+make deploy PROFILE=DifferentProfile
+
+# Clear the saved profile
+make clear-profile
+```
+
+The profile is saved to `.aws-profile` (gitignored). If no profile is set, commands use your default AWS credentials.
+
+## Local Testing (Without Deploying)
+
+Test your agent locally before deploying to AWS using the AgentCore development server:
+
+### Start Local Server
+
+```bash
+make local
+```
+
+This starts a local server on `http://localhost:8080` that mimics the AgentCore Runtime environment.
+
+### Invoke Locally
+
+In a separate terminal:
+
+```bash
+make local-invoke PROMPT="What is AWS Lambda?"
+```
+
+### Requirements
+
+- Set `TAVILY_API_KEY` in your `.secrets` file (the agent reads it automatically)
+- AWS credentials for Bedrock access (see [AWS Profile Management](#aws-profile-management))
+
+### Benefits
+
+| Benefit | Description |
+|---------|-------------|
+| **Fast iteration** | No need to build container or deploy to AWS |
+| **Same runtime behavior** | Local server mimics AgentCore Runtime |
+| **Debug easily** | Full access to logs and stack traces |
+
+> **Note:** The `bedrock-agentcore-starter-toolkit` is installed as a local-only dependency and is NOT included in the deployed Docker container.
+
 ## Deployment
 
 ### Using the Deploy Script (Required)
@@ -168,28 +259,23 @@ The deployment script is **required** because it passes runtime environment vari
 
 ```bash
 # Using Makefile (recommended)
-make deploy                          # Default credentials
-make deploy PROFILE=YourProfileName  # Named profile (SSO users)
+make deploy
 
 # Or using uv directly
-uv run python -m scripts.deploy                          # Default credentials
-uv run python -m scripts.deploy --profile YourProfileName # Named profile (SSO users)
+uv run python -m scripts.deploy
 ```
+
+> **Tip:** Set your AWS profile once with `make set-profile PROFILE=YourProfile`. See [AWS Profile Management](#aws-profile-management).
 
 **What the script does:**
 
-| Step | Action                                                                          |
-| ---- | ------------------------------------------------------------------------------- |
-| 1/6  | **CDK SecretsStack** - Deploys Secrets Manager secret via AWS CDK               |
-| 2/6  | **Configure** - Runs `agentcore configure` to generate Dockerfile               |
-| 3/6  | **Deploy** - Builds container via CodeBuild, passes env vars via `--env` flags  |
-| 4/6  | **Extract Role** - Gets execution role ARN from `.bedrock_agentcore.yaml`       |
-| 5/6  | **CDK IamPolicyStack** - Grants Secrets Manager access via AWS CDK              |
-| 6/6  | **Restart Containers** - Redeploys to apply IAM permissions to running containers |
+| Step | Action                                                                                    |
+| ---- | ----------------------------------------------------------------------------------------- |
+| 1/3  | **CDK Infrastructure** - Deploys SecretsStack + AgentInfraStack (ECR, CodeBuild, IAM, Memory) |
+| 2/3  | **CodeBuild** - Triggers build to create Docker image and push to ECR                     |
+| 3/3  | **CDK RuntimeStack** - Creates AgentCore Runtime with container and environment config    |
 
-> **Infrastructure as Code:** This project uses AWS CDK to manage Secrets Manager secrets and IAM policies. CDK provides version-controlled, reviewable infrastructure that integrates with your team's workflow.
->
-> **How environment variables are passed:** The script uses `agentcore deploy --env` flags to pass `AWS_REGION`, `SECRET_NAME`, `MODEL_ID`, and `FALLBACK_MODEL_ID` to the container runtime. This approach is cleaner than modifying the Dockerfile.
+> **All infrastructure is CDK-managed.** See [Infrastructure as Code](#infrastructure-as-code) for detailed stack documentation.
 >
 > **First-time setup:** The deploy script automatically bootstraps CDK if needed (one-time per account/region).
 
@@ -197,115 +283,59 @@ uv run python -m scripts.deploy --profile YourProfileName # Named profile (SSO u
 
 <!-- markdownlint-disable MD033 -->
 <details>
-<summary>Click to expand manual deployment steps</summary>
+<summary>Click to expand manual CDK deployment steps</summary>
 <!-- markdownlint-enable MD033 -->
 
-> **Warning:** Manual deployment requires you to pass environment variables via `--env` flags when running `agentcore deploy`. If you skip this step, the agent will use hardcoded defaults instead of your configuration. **Using the deploy script (`make deploy`) is strongly recommended.**
+> **Note:** These steps mirror what `make deploy` does automatically. Using `make deploy` is recommended.
 
-#### 1. Create Secrets Manager Secret
+#### 1. Bootstrap CDK (first-time only)
 
 ```bash
-# Using default credentials
-aws secretsmanager create-secret \
-  --name "langgraph-agent/tavily-api-key" \
-  --secret-string "your-tavily-api-key-here" \
-  --region <your-region>
+cd cdk && cdk bootstrap aws://ACCOUNT_ID/REGION --profile YourProfileName
+```
 
-# Using a named profile
-aws secretsmanager create-secret \
-  --name "langgraph-agent/tavily-api-key" \
-  --secret-string "your-tavily-api-key-here" \
-  --region <your-region> \
+#### 2. Deploy Infrastructure Stacks
+
+Deploy SecretsStack and AgentInfraStack (can run in parallel):
+
+```bash
+cd cdk && cdk deploy SecretsStack AgentInfraStack \
+  --require-approval never \
+  --outputs-file cdk-outputs.json \
+  --context secret_name="langgraph-agent/tavily-api-key" \
+  --context tavily_api_key="your-tavily-api-key" \
+  --context agent_name="your_agent_name" \
+  --context model_id="global.anthropic.claude-haiku-4-5-20251001-v1:0" \
+  --context fallback_model_id="global.anthropic.claude-sonnet-4-5-20250929-v1:0" \
+  --context source_path=".." \
   --profile YourProfileName
 ```
 
-#### 2. Configure the Agent
+#### 3. Build and Push Docker Image
+
+Trigger the CodeBuild project created by AgentInfraStack:
 
 ```bash
-# Using default credentials
-uv run agentcore configure \
-  -e langgraph_agent_web_search.py \
-  -n langgraph_agent_web_search \
-  -dt container \
-  -r <your-region> \
-  --non-interactive
+aws codebuild start-build \
+  --project-name your_agent_name-builder \
+  --profile YourProfileName
 
-# Using a named profile
-AWS_PROFILE=YourProfileName uv run agentcore configure \
-  -e langgraph_agent_web_search.py \
-  -n langgraph_agent_web_search \
-  -dt container \
-  -r <your-region> \
-  --non-interactive
+# Wait for build to complete
+aws codebuild batch-get-builds --ids BUILD_ID --profile YourProfileName
 ```
 
-**Arguments explained:**
+#### 4. Deploy Runtime Stack
 
-| Flag                     | Description                                                                                                                                                     |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `-e, --entrypoint`       | The Python file containing your agent code and the `@app.entrypoint` decorator                                                                                  |
-| `-n, --name`             | Unique name for your agent (used in ARNs, ECR repo names, and CloudWatch logs)                                                                                  |
-| `-dt, --deployment-type` | Either `container` or `direct_code_deploy`. Use `container` for proper OpenTelemetry instrumentation—wraps code with `opentelemetry-instrument` in Dockerfile   |
-| `-r, --region`           | AWS region to deploy to (must have Bedrock AgentCore available)                                                                                                 |
-| `--non-interactive`      | Skip interactive prompts; use defaults for unspecified options (useful for CI/CD)                                                                               |
-
-> **Why `container` mode?** The `direct_code_deploy` mode runs your Python file directly without the `opentelemetry-instrument` wrapper. Container mode generates a Dockerfile with `CMD ["opentelemetry-instrument", "python", "-m", "your_agent"]`, which auto-instruments LangChain, Bedrock, and other libraries for tracing.
-
-#### 3. Deploy the Agent
-
-Pass environment variables via `--env` flags:
+Once the Docker image is in ECR, deploy the RuntimeStack:
 
 ```bash
-# Using default credentials
-uv run agentcore deploy \
-  --env "AWS_REGION=<your-region>" \
-  --env "SECRET_NAME=langgraph-agent/tavily-api-key" \
-  --env "MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0"
-
-# Using a named profile
-AWS_PROFILE=YourProfileName uv run agentcore deploy \
-  --env "AWS_REGION=<your-region>" \
-  --env "SECRET_NAME=langgraph-agent/tavily-api-key" \
-  --env "MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0"
-```
-
-#### 4. Grant Secrets Manager Access
-
-```bash
-# Get the execution role name from .bedrock_agentcore.yaml
-ROLE_NAME=$(grep "execution_role:" .bedrock_agentcore.yaml | head -1 | sed 's/.*role\///' | tr -d ' ')
-
-# Using default credentials
-aws iam put-role-policy \
-  --role-name "$ROLE_NAME" \
-  --policy-name SecretsManagerAccess \
-  --policy-document '{
-    "Version": "2012-10-17",
-    "Statement": [
-      {
-        "Effect": "Allow",
-        "Action": ["secretsmanager:GetSecretValue"],
-        "Resource": "arn:aws:secretsmanager:<your-region>:*:secret:langgraph-agent/*"
-      }
-    ]
-  }' \
-  --region <your-region>
-
-# Using a named profile
-aws iam put-role-policy \
-  --role-name "$ROLE_NAME" \
-  --policy-name SecretsManagerAccess \
-  --policy-document '{
-    "Version": "2012-10-17",
-    "Statement": [
-      {
-        "Effect": "Allow",
-        "Action": ["secretsmanager:GetSecretValue"],
-        "Resource": "arn:aws:secretsmanager:<your-region>:*:secret:langgraph-agent/*"
-      }
-    ]
-  }' \
-  --region <your-region> \
+cd cdk && cdk deploy RuntimeStack \
+  --require-approval never \
+  --context secret_name="langgraph-agent/tavily-api-key" \
+  --context agent_name="your_agent_name" \
+  --context model_id="global.anthropic.claude-haiku-4-5-20251001-v1:0" \
+  --context fallback_model_id="global.anthropic.claude-sonnet-4-5-20250929-v1:0" \
+  --context source_path=".." \
   --profile YourProfileName
 ```
 
@@ -346,37 +376,49 @@ Then open <http://localhost:8080> in your browser.
 
 ```bash
 # Using Makefile (recommended)
-make invoke PROFILE=YourProfileName                          # Default prompt
-make invoke PROFILE=YourProfileName PROMPT="Your question"   # Custom prompt
+make invoke                          # Default prompt
+make invoke PROMPT="Your question"   # Custom prompt
 
 # Using uv directly
 uv run agentcore invoke '{"prompt": "Search for AWS news today"}'
-AWS_PROFILE=YourProfileName uv run agentcore invoke '{"prompt": "Search for AWS news today"}'
 ```
 
 ### View Logs
 
-First, get the log group from `agentcore status`, then use AWS CLI:
+Stream agent runtime logs with pretty formatting:
 
 ```bash
-# Get the log group name and tail command
-make status PROFILE=YourProfileName
+# Using Makefile (recommended) - streams with color-coded output
+make logs
 
-# Then tail logs using the log group shown in status output
-aws logs tail /aws/bedrock-agentcore/runtimes/<agent-id>-DEFAULT \
-  --log-stream-name-prefix "$(date +%Y/%m/%d)/[runtime-logs]" \
-  --follow --profile YourProfileName
+# Logs are formatted with:
+# - Color-coded severity levels (INFO=blue, WARN=yellow, ERROR=red)
+# - Clean timestamps (HH:MM:SS.mmm format)
+# - Trace IDs for correlation
+# - File locations for errors/warnings
+```
+
+**Example output:**
+
+```text
+📋 Agent Runtime Logs (press Ctrl+C to stop)
+────────────────────────────────────────────────────────────────────────────────
+
+17:23:01.236 INFO  Agent invocation started with prompt length: 25 [trace:695fe7f4]
+17:23:01.238 INFO  Chatbot node invoked with 1 messages [trace:695fe7f4]
+17:23:03.347 INFO  LLM response received, has tool calls: False [trace:695fe7f4]
+17:23:03.348 INFO  Agent invocation completed successfully [trace:695fe7f4]
+17:23:03.349 INFO  Invocation completed successfully (2.113s) [trace:695fe7f4]
 ```
 
 ### Check Agent Status
 
 ```bash
 # Using Makefile
-make status PROFILE=YourProfileName
+make status
 
 # Using uv directly
 uv run agentcore status
-AWS_PROFILE=YourProfileName uv run agentcore status
 ```
 
 ## Observability
@@ -389,35 +431,49 @@ This project uses OpenTelemetry instrumentation to capture LangChain traces. The
 
 ### View Traces
 
-List recent traces:
+Analyze OpenTelemetry traces from recent agent invocations:
 
 ```bash
-# Using Makefile
-make traces PROFILE=YourProfileName
+# Using Makefile (default: last 1 hour)
+make traces
 
-# Using uv directly
-uv run agentcore obs list
-AWS_PROFILE=YourProfileName uv run agentcore obs list
+# View traces from last 2 hours
+make traces HOURS=2
+
+# View traces from last 24 hours
+make traces HOURS=24
 ```
 
-Show detailed trace with timing:
-
-```bash
-uv run agentcore obs show --last 1 --verbose
-AWS_PROFILE=YourProfileName uv run agentcore obs show --last 1 --verbose
-```
-
-Example output:
+**Example output:**
 
 ```text
-🔍 Trace: 694561e74067881e... (6 spans, 4293.24ms)
-├── ⚠ chatbot.task [1197.63ms]
-│   ├── ⚠ ChatBedrockConverse.chat [1196.88ms]
-│   │   └── ⚠ chat claude-haiku [1192.09ms]
-│   └── ⚠ tools_condition.task [0.24ms]
-└── ⚠ tools.task [3095.05ms]
-    └── ⚠ tavily_search_results_json.tool [3093.94ms]
+🔍 Analyzing traces for agent: langgraph_search_8Jan (langgraph_search_8Jan-SggTzr89De)
+   Time range: Last 1 hour(s)
+
+Total log events: 142
+
+Unique trace IDs found: 3
+  - Trace ID: 695fd2850719b999273b98a51413fa9c
+    Events: 9
+    Time range: 2026-01-08 09:51:33.879000 to 2026-01-08 09:51:39.685000
+    Duration: 5.806s (5806ms)
+  - Trace ID: 695fd2bd64184b49549ac281325749c3
+    Events: 9
+    Time range: 2026-01-08 09:52:29.677000 to 2026-01-08 09:52:35.325000
+    Duration: 5.648s (5648ms)
+  - Trace ID: 695fe17016144f85065bbaa7691341d4
+    Events: 9
+    Time range: 2026-01-08 10:55:13.581000 to 2026-01-08 10:55:19.017000
+    Duration: 5.436s (5436ms)
 ```
+
+**Trace features:**
+
+- Unique trace IDs for each agent invocation
+- Event counts (typically 9-12 events per invocation)
+- Full execution timeline with start/end timestamps
+- Total duration in seconds and milliseconds
+- Configurable time range (HOURS parameter)
 
 ### CloudWatch Dashboard
 
@@ -425,6 +481,139 @@ View the GenAI Observability Dashboard in the AWS Console:
 
 ```text
 https://console.aws.amazon.com/cloudwatch/home?region=<your-region>#gen-ai-observability/agent-core
+```
+
+## Infrastructure as Code
+
+This project uses **AWS CDK (Python)** to manage all infrastructure declaratively. CDK provides version-controlled, reviewable infrastructure that integrates with your team's workflow.
+
+### Why CDK?
+
+| Benefit | Description |
+|---------|-------------|
+| **Type Safety** | Python stacks with IDE autocomplete and validation |
+| **Modular Stacks** | Separate stacks for secrets, infrastructure, and runtime |
+| **Cross-Stack References** | Resources automatically wired between stacks |
+| **Drift Detection** | CloudFormation tracks actual vs. desired state |
+| **Rollback Support** | Failed deployments automatically roll back |
+
+### CDK Stacks
+
+The infrastructure is organized into three stacks that deploy in a specific order:
+
+```mermaid
+flowchart LR
+    subgraph Phase1["Phase 1: Infrastructure"]
+        direction TB
+        Secrets[SecretsStack]
+        Infra[AgentInfraStack]
+    end
+
+    subgraph Phase2["Phase 2: Build"]
+        CodeBuild[CodeBuild<br/>Docker Build]
+    end
+
+    subgraph Phase3["Phase 3: Runtime"]
+        Runtime[RuntimeStack]
+    end
+
+    Secrets --> CodeBuild
+    Infra --> CodeBuild
+    CodeBuild --> Runtime
+
+    style Phase1 fill:#e1f5fe
+    style Phase2 fill:#fff3e0
+    style Phase3 fill:#e8f5e9
+```
+
+**Phase 1** deploys in parallel (no dependencies between SecretsStack and AgentInfraStack), **Phase 2** runs CodeBuild to push the Docker image, and **Phase 3** creates the Runtime (which requires the image to exist).
+
+### Stack Details
+
+#### SecretsStack
+
+Creates the Tavily API key in AWS Secrets Manager.
+
+| Resource | Type | Description |
+|----------|------|-------------|
+| `TavilyApiKey` | `secretsmanager.Secret` | Stores the Tavily API key securely |
+
+**Outputs:** `SecretArn`, `SecretName`
+
+#### AgentInfraStack
+
+Creates all infrastructure required to build and run the agent.
+
+| Resource | Type | Description |
+|----------|------|-------------|
+| `AgentECR` | `ecr.Repository` | Container registry for agent image |
+| `SourceAsset` | `s3_assets.Asset` | Source code uploaded for CodeBuild |
+| `CodeBuildRole` | `iam.Role` | IAM role for CodeBuild project |
+| `AgentBuilder` | `codebuild.Project` | Builds Docker image and pushes to ECR |
+| `ExecutionRole` | `iam.Role` | Runtime execution role with permissions |
+| `AgentMemory` | `agentcore.CfnMemory` | Agent memory store for conversation history |
+
+**Outputs:** `ECRRepositoryUri`, `CodeBuildProjectName`, `ExecutionRoleArn`, `MemoryArn`
+
+**IAM Permissions granted to ExecutionRole:**
+
+- `secretsmanager:GetSecretValue` - Fetch Tavily API key
+- `bedrock:InvokeModel*` - Call Claude models
+- `ecr:Get*`, `ecr:BatchGet*` - Pull container images
+- `logs:CreateLog*`, `logs:PutLogEvents` - Write CloudWatch logs
+
+#### RuntimeStack
+
+Creates the AgentCore Runtime that runs the agent container.
+
+| Resource | Type | Description |
+|----------|------|-------------|
+| `AgentRuntime` | `agentcore.CfnRuntime` | AgentCore runtime with container config |
+
+**Outputs:** `RuntimeArn`, `RuntimeId`
+
+**Environment variables passed to container:**
+
+- `AWS_REGION` - Deployment region
+- `SECRET_NAME` - Name of the Secrets Manager secret
+- `MODEL_ID` - Primary Bedrock model ID
+- `FALLBACK_MODEL_ID` - Fallback model for resilience
+
+### CDK Project Structure
+
+```text
+cdk/
+├── app.py                  # CDK app entry point
+├── cdk.json                # CDK configuration
+└── stacks/
+    ├── __init__.py         # Stack exports
+    ├── constants.py        # Shared constants (stack names, context keys)
+    ├── secrets_stack.py    # SecretsStack definition
+    ├── agent_infra_stack.py # AgentInfraStack definition
+    └── runtime_stack.py    # RuntimeStack definition
+```
+
+### Manual CDK Commands
+
+While `make deploy` handles everything automatically, you can run CDK commands directly:
+
+```bash
+# Synthesize CloudFormation templates (dry run)
+cd cdk && cdk synth --all \
+  --context secret_name="langgraph-agent/tavily-api-key" \
+  --context tavily_api_key="your-key" \
+  --context agent_name="your-agent" \
+  --context model_id="..." \
+  --context source_path=".."
+
+# Deploy specific stacks
+cdk deploy SecretsStack AgentInfraStack --profile YourProfile
+
+# Show stack differences before deploying
+cdk diff --profile YourProfile
+
+# List all stacks
+cdk ls
 ```
 
 ## Project Structure
@@ -435,12 +624,16 @@ https://console.aws.amazon.com/cloudwatch/home?region=<your-region>#gen-ai-obser
 ├── Makefile                       # Common development commands
 ├── pyproject.toml                 # Project metadata and dependencies
 ├── uv.lock                        # Locked dependencies (uv)
-├── .env.sample                    # Environment variable template
-├── .env                           # Local environment variables (gitignored)
+├── .env.sample                    # Configuration template (committed)
+├── .env                           # Local configuration (gitignored)
+├── .secrets.sample                # Secrets template (committed)
+├── .secrets                       # Local secrets/API keys (gitignored)
 ├── .gitignore                     # Git ignore rules
-├── scripts/                       # Deployment scripts (Python/Typer)
+├── scripts/                       # Deployment and observability scripts
 │   ├── deploy.py                  # Deploy to AWS Bedrock AgentCore
 │   ├── destroy.py                 # Cleanup AWS resources
+│   ├── analyze_traces.py          # Analyze OpenTelemetry traces with durations
+│   ├── format_logs.py             # Pretty-print CloudWatch logs with colors
 │   └── lib/                       # Shared utilities
 │       ├── aws.py                 # boto3 helpers (CloudFormation, Secrets, ECR)
 │       ├── commands.py            # Subprocess wrappers (agentcore, cdk)
@@ -452,9 +645,10 @@ https://console.aws.amazon.com/cloudwatch/home?region=<your-region>#gen-ai-obser
 │   ├── cdk.json                   # CDK configuration
 │   └── stacks/                    # CDK stack definitions
 │       ├── __init__.py            # Stack exports
-│       ├── constants.py           # Shared constants
-│       ├── secrets_stack.py       # Secrets Manager resources
-│       └── iam_stack.py           # IAM policies
+│       ├── constants.py           # Shared constants (stack names, context keys)
+│       ├── secrets_stack.py       # SecretsStack (Secrets Manager)
+│       ├── agent_infra_stack.py   # AgentInfraStack (ECR, CodeBuild, IAM, Memory)
+│       └── runtime_stack.py       # RuntimeStack (AgentCore Runtime)
 ├── ui/                            # NiceGUI testing web application
 │   ├── app.py                     # Main application entry point
 │   ├── prompts.json               # Prompt library storage (generated)
@@ -499,33 +693,52 @@ https://console.aws.amazon.com/cloudwatch/home?region=<your-region>#gen-ai-obser
 
 A Makefile is provided for common operations. Run `make help` to see all available targets. All commands use `uv` under the hood.
 
+### AWS Profile
+
+```bash
+make set-profile PROFILE=YourProfile  # Save profile for all commands
+make clear-profile                    # Clear saved profile
+```
+
+Once set, all commands automatically use your profile. See [AWS Profile Management](#aws-profile-management).
+
 ### Setup & Testing
 
 ```bash
-make setup         # Install dependencies with uv sync
+make setup         # Install ALL dependencies (local, deploy, ui) - optional
 make test          # Run all tests
 make test-cov      # Run tests with coverage report
 make lint          # Run linter and format check (ruff)
 make format        # Format code and fix lint issues (ruff)
 ```
 
+> **Note:** `make setup` is optional. Each command auto-installs its required dependencies.
+
+### Local Testing
+
+```bash
+make local                        # Start local dev server
+make local-invoke PROMPT="Hello"  # Invoke local server
+```
+
 ### Deployment & Operations
 
 ```bash
-make deploy PROFILE=YourProfile      # Deploy agent to AWS
-make destroy PROFILE=YourProfile     # Destroy agent only (keeps secret and ECR)
-make destroy-all PROFILE=YourProfile # Destroy all resources including secret and ECR
+make deploy      # Deploy agent to AWS
+make destroy     # Destroy agent only (keeps secret and ECR)
+make destroy-all # Destroy all resources including secret and ECR
 ```
 
 ### Runtime Commands
 
 ```bash
-make status PROFILE=YourProfile                 # Check agent status (includes log group info)
-make invoke PROFILE=YourProfile                 # Test with default prompt
-make invoke PROFILE=YourProfile PROMPT="Hello"  # Test with custom prompt
-make logs PROFILE=YourProfile                   # Show how to tail agent logs
-make traces PROFILE=YourProfile                 # List recent traces
-make ui                                         # Launch web UI for testing (localhost:8080)
+make status                 # Check agent status
+make invoke                 # Test with default prompt
+make invoke PROMPT="Hello"  # Test with custom prompt
+make logs                   # Stream logs with pretty formatting (color-coded)
+make traces                 # View traces (default: last 1 hour)
+make traces HOURS=2         # View traces from last 2 hours
+make ui                     # Launch web UI for testing (localhost:8080)
 ```
 
 ### Cleanup
@@ -533,8 +746,6 @@ make ui                                         # Launch web UI for testing (loc
 ```bash
 make clean         # Remove build artifacts and cache files (.venv, __pycache__, cdk.out)
 ```
-
-> **Note:** The `PROFILE` argument is optional. Omit it to use default AWS credentials.
 
 ## Customizing the Agent
 
@@ -561,7 +772,7 @@ To add a new tool to the agent:
 3. **Redeploy**:
 
    ```bash
-   make deploy PROFILE=YourProfile
+   make deploy
    ```
 
 ### Changing the LLM Model
@@ -618,7 +829,7 @@ Running this agent incurs costs from multiple AWS services:
 
 **Estimated monthly cost for light usage (100 invocations/month):** $1-5
 
-> **Tip:** Use `agentcore obs list` to monitor invocation patterns and optimize costs.
+> **Tip:** Use `make traces` to monitor invocation patterns and track execution durations for cost optimization.
 
 ## Security Considerations
 
@@ -667,13 +878,12 @@ Use the cleanup script to destroy AWS resources:
 
 ```bash
 # Using Makefile (recommended)
-make destroy PROFILE=YourProfile     # Destroy agent only (keeps secret and ECR)
-make destroy-all PROFILE=YourProfile # Destroy everything
+make destroy     # Destroy agent only (keeps secret and ECR)
+make destroy-all # Destroy everything
 
 # Or using uv directly
-uv run python -m scripts.destroy                          # Destroy agent only
-uv run python -m scripts.destroy --profile YourProfileName # With named profile
-uv run python -m scripts.destroy --all                    # Destroy everything
+uv run python -m scripts.destroy       # Destroy agent only
+uv run python -m scripts.destroy --all # Destroy everything
 
 # Selective deletion flags
 uv run python -m scripts.destroy --delete-secret              # Also delete Secrets Manager secret
@@ -683,16 +893,15 @@ uv run python -m scripts.destroy --delete-secret --delete-ecr # Same as --all
 
 **What gets deleted:**
 
-| Flag              | Resources Removed                                                                             |
-| ----------------- | --------------------------------------------------------------------------------------------- |
-| *(default)*       | CDK IamPolicyStack, AgentCore agent, endpoint, memory, IAM roles, S3 artifacts, ECR images    |
-| `--delete-secret` | + CDK SecretsStack + Secrets Manager secret                                                   |
-| `--delete-ecr`    | + ECR repository                                                                              |
-| `--all`           | Everything above                                                                              |
+Since all resources are CDK-managed, `cdk destroy --all` removes everything:
 
-> **Tip:** For iterative development, use `make destroy` without the `-all` suffix. This preserves your secret and ECR repo, making redeployment faster since these don't need to be recreated.
->
-> **Note:** The destroy script uses AWS CloudFormation directly to delete CDK stacks, so you don't need the CDK CLI installed for cleanup.
+| Stack | Resources Removed |
+|-------|-------------------|
+| `RuntimeStack` | AgentCore Runtime |
+| `AgentInfraStack` | ECR repository, CodeBuild project, IAM execution role, Agent Memory, S3 source assets |
+| `SecretsStack` | Secrets Manager secret |
+
+> **Note:** The ECR repository is configured with `empty_on_delete=True` and `removal_policy=DESTROY`, so images are automatically deleted when the stack is destroyed.
 
 ## Troubleshooting
 
@@ -701,27 +910,38 @@ uv run python -m scripts.destroy --delete-secret --delete-ecr # Same as --all
 Use `uv run` or `make` to run commands with the correct environment:
 
 ```bash
-# Using make (recommended)
-make status PROFILE=YourProfile
+# Using make (recommended) - auto-installs dependencies
+make status
 
 # Or using uv directly
 uv run agentcore status
 ```
 
-If dependencies aren't installed, run `uv sync --extra deploy` first.
+> **Tip:** Ensure your AWS profile is set with `make set-profile PROFILE=YourProfile`.
 
-### Agent fails to start with "TAVILY_API_KEY not found"
+### "Missing .secrets file" error during deployment
 
-Ensure:
+Create the `.secrets` file from the template:
 
-1. The secret exists in Secrets Manager with the correct name
+```bash
+cp .secrets.sample .secrets
+```
+
+Then edit `.secrets` and add your Tavily API key.
+
+### Agent fails to start with "TAVILY_API_KEY not found" (runtime)
+
+This error occurs when the deployed agent can't retrieve the secret from AWS. Ensure:
+
+1. The secret exists in Secrets Manager with the correct name (check `SECRET_NAME` in `.env`)
 2. The execution role has the `SecretsManagerAccess` policy attached
 
-### Traces not appearing in `agentcore obs list`
+### Traces not appearing in `make traces`
 
-1. Wait 1-2 minutes after invocation for traces to propagate
+1. Wait 1-2 minutes after invocation for traces to propagate to CloudWatch Logs
 2. Verify deployment type is `container` (not `direct_code_deploy`)
-3. Check the OTEL logs: `aws logs tail <log-group> --log-stream-names "otel-rt-logs"`
+3. Try increasing the time range: `make traces HOURS=2`
+4. Check that OpenTelemetry instrumentation is working: `make logs` should show trace IDs
 
 ### CodeBuild fails
 

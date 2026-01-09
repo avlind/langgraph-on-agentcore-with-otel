@@ -32,8 +32,9 @@ make invoke PROFILE=YourProfileName PROMPT="Search for AWS news"
 # View agent status
 make status PROFILE=YourProfileName
 
-# View traces
+# View traces (default: last 1 hour)
 make traces PROFILE=YourProfileName
+make traces PROFILE=YourProfileName HOURS=2
 
 # Tail runtime logs
 make logs PROFILE=YourProfileName
@@ -41,19 +42,18 @@ make logs PROFILE=YourProfileName
 
 ## Architecture
 
-```
-CDK manages:                    agentcore CLI manages:
-├── SecretsStack               ├── Agent runtime
-│   └── Secrets Manager        ├── Execution role
-└── IamPolicyStack             ├── ECR repository
-    └── IAM policy             ├── CodeBuild
-                               └── S3 artifacts
+```text
+CDK manages all infrastructure:
+├── SecretsStack           → Secrets Manager (Tavily API key)
+├── AgentInfraStack        → ECR, CodeBuild, IAM role, Memory
+└── RuntimeStack           → AgentCore Runtime
 
 User Request → Bedrock AgentCore → LangGraph Agent → Claude Haiku (Bedrock)
                                                    ↘ Tavily Search API
 ```
 
 The agent is a ReAct-style graph in `langgraph_agent_web_search.py`:
+
 1. **chatbot node** - Invokes Claude Haiku with tools bound
 2. **tools_condition** - Routes to tools node if LLM requests tool call
 3. **tools node** - Executes Tavily search
@@ -62,21 +62,22 @@ The agent is a ReAct-style graph in `langgraph_agent_web_search.py`:
 ## Key Implementation Details
 
 - **Dependency management**: Uses uv with `pyproject.toml` and `uv.lock`
-- **Infrastructure as Code**: AWS CDK (Python) manages Secrets Manager and IAM policies in `cdk/` directory
-- **Secrets handling**: TAVILY_API_KEY is stored in AWS Secrets Manager via CDK SecretsStack
-- **IAM policies**: CDK IamPolicyStack grants `secretsmanager:GetSecretValue` to execution role
-- **Environment variables**: `scripts/deploy.py` passes `AWS_REGION`, `SECRET_NAME`, `MODEL_ID` to the container runtime via `agentcore deploy --env` flags
-- **Deployment scripts**: Python scripts in `scripts/` directory using Typer CLI framework (replaced shell scripts)
+- **Infrastructure as Code**: AWS CDK (Python) manages all infrastructure in `cdk/` directory
+- **Secrets handling**: TAVILY_API_KEY stored in AWS Secrets Manager via CDK SecretsStack
+- **IAM policies**: AgentInfraStack creates execution role with Secrets Manager, Bedrock, ECR, and CloudWatch permissions
+- **Environment variables**: RuntimeStack passes `AWS_REGION`, `SECRET_NAME`, `MODEL_ID`, `FALLBACK_MODEL_ID` to the container
+- **Deployment scripts**: Python scripts in `scripts/` directory using Typer CLI framework
 - **Container deployment**: Required for OpenTelemetry instrumentation - the Dockerfile uses `opentelemetry-instrument` wrapper
-- **6-step deployment**: (1) CDK SecretsStack, (2) agentcore configure, (3) agentcore deploy, (4) extract role ARN, (5) CDK IamPolicyStack, (6) restart containers to apply IAM permissions
+- **3-phase deployment**: (1) CDK SecretsStack + AgentInfraStack, (2) CodeBuild, (3) CDK RuntimeStack
 - **Linting/Formatting**: Uses ruff for both linting and formatting
 
 ## CDK Stacks
 
 | Stack | Resources | When Deployed |
 |-------|-----------|---------------|
-| `SecretsStack` | Secrets Manager secret | Before agentcore configure |
-| `IamPolicyStack` | IAM inline policy | After agentcore deploy |
+| `SecretsStack` | Secrets Manager secret | Phase 1 (parallel with AgentInfraStack) |
+| `AgentInfraStack` | ECR, CodeBuild, IAM role, Memory | Phase 1 (parallel with SecretsStack) |
+| `RuntimeStack` | AgentCore Runtime | Phase 3 (after CodeBuild) |
 
 ## Git Commit Guidelines
 
@@ -85,9 +86,16 @@ The agent is a ReAct-style graph in `langgraph_agent_web_search.py`:
 
 ## Configuration
 
-All configuration is in `.env`:
-- `TAVILY_API_KEY` - Tavily API key (stored in Secrets Manager on deploy)
+Configuration is split between two files:
+
+**`.env`** - Non-sensitive deployment configuration:
+
 - `AWS_REGION` - Deployment region
 - `AGENT_NAME` - Agent name in AgentCore
-- `MODEL_ID` - Bedrock model ID
+- `MODEL_ID` - Primary Bedrock model ID
+- `FALLBACK_MODEL_ID` - Fallback model for resilience
 - `SECRET_NAME` - Secrets Manager secret name
+
+**`.secrets`** - Sensitive values (gitignored):
+
+- `TAVILY_API_KEY` - Tavily API key (stored in Secrets Manager on deploy)

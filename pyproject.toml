@@ -26,13 +26,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Local deployment tools - NOT included in Docker container
+# Local testing - NOT included in Docker container
+local = [
+    "bedrock-agentcore-starter-toolkit>=0.2.0",
+]
+# Deployment tools - NOT included in Docker container
 deploy = [
-    "bedrock-agentcore-starter-toolkit~=0.2.5",  # agentcore CLI
     "aws-cdk-lib~=2.233.0",                       # CDK for infrastructure
     "constructs~=10.4.4",                         # CDK dependency
     "typer>=0.16.0",                               # CLI framework with Rich
-    "pyyaml~=6.0.0",                              # YAML parsing
+    "websocket-client~=1.8.0",                    # WebSocket for agent invocation
 ]
 # NiceGUI testing UI
 ui = [

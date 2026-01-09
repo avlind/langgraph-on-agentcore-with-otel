@@ -10,6 +10,7 @@ This agent uses a ReAct-style graph:
 
 import logging
 import os
+from pathlib import Path
 from typing import Annotated, Any
 
 import boto3
@@ -181,6 +182,12 @@ class ResilientLLMInvoker:
 # Load environment variables from .env file (for local dev)
 load_dotenv()
 
+# Load secrets from .secrets file if it exists (local dev only - not in container)
+SECRETS_FILE = Path(".secrets")
+if SECRETS_FILE.exists():
+    load_dotenv(SECRETS_FILE)
+    logger.info("Loaded secrets from .secrets file (local development)")
+
 # Configuration from environment variables (with defaults)
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-2")
 SECRET_NAME = os.environ.get("SECRET_NAME", "langgraph-agent/tavily-api-key")
@@ -190,15 +197,14 @@ FALLBACK_MODEL_ID = os.environ.get(
 )
 
 
-def fetch_tavily_api_key() -> str | None:
+def fetch_tavily_api_key_from_secrets_manager() -> str | None:
     """
     Fetch Tavily API key from AWS Secrets Manager.
 
+    Used when running in AWS (container deployment) where .secrets file doesn't exist.
+
     Returns:
         The API key string if successful, None otherwise.
-
-    Raises:
-        Logs specific errors but does not raise - returns None on failure.
     """
     try:
         logger.info("Fetching Tavily API key from Secrets Manager: %s", SECRET_NAME)
@@ -222,9 +228,11 @@ def fetch_tavily_api_key() -> str | None:
         return None
 
 
-# Fetch Tavily API key: prefer env var, fallback to Secrets Manager
+# Load Tavily API key with priority:
+# 1. Environment variable (set by .secrets file locally, or container env in AWS)
+# 2. AWS Secrets Manager (fallback for deployed containers)
 if not os.environ.get("TAVILY_API_KEY"):
-    tavily_key = fetch_tavily_api_key()
+    tavily_key = fetch_tavily_api_key_from_secrets_manager()
     if tavily_key:
         os.environ["TAVILY_API_KEY"] = tavily_key
     else:

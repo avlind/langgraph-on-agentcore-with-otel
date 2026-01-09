@@ -1,5 +1,7 @@
-# Environment variables (contains secrets)
+# Configuration and secrets
 .env
+.secrets
+.aws-profile
 
 # Python
 .venv/

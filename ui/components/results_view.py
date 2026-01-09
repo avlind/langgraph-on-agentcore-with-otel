@@ -106,21 +106,30 @@ class ResultsView:
                         ui.label(f"Completed: {result.completed_at.strftime('%H:%M:%S')}")
 
                 if result.session_id:
-                    with ui.row().classes("items-center gap-1 mt-1"):
-                        ui.label("Session:").classes("text-xs text-gray-400")
-                        # Try to build deep link URL, fall back to basic dashboard
-                        dashboard_url = build_cloudwatch_session_url(result.session_id)
-                        if not dashboard_url:
-                            region = get_agentcore_region()
-                            dashboard_url = (
-                                f"https://console.aws.amazon.com/cloudwatch/home"
-                                f"?region={region}#gen-ai-observability/agent-core"
+                    with ui.column().classes("gap-1 mt-1"):
+                        with ui.row().classes("items-center gap-1"):
+                            ui.label("Session:").classes("text-xs text-gray-400")
+                            # Try to build deep link URL, fall back to basic dashboard
+                            dashboard_url = build_cloudwatch_session_url(
+                                result.session_id, agent=result.agent
                             )
-                        ui.link(
-                            result.session_id,
-                            dashboard_url,
-                            new_tab=True,
-                        ).classes("text-xs font-mono text-blue-600 hover:underline")
+                            if not dashboard_url:
+                                region = (
+                                    result.agent.region if result.agent else get_agentcore_region()
+                                )
+                                dashboard_url = (
+                                    f"https://console.aws.amazon.com/cloudwatch/home"
+                                    f"?region={region}#gen-ai-observability/agent-core"
+                                )
+                            ui.link(
+                                result.session_id,
+                                dashboard_url,
+                                new_tab=True,
+                            ).classes("text-xs font-mono text-blue-600 hover:underline")
+                        ui.label(
+                            "(Note: Traces may take up to 30 seconds to appear "
+                            "in observability portal)"
+                        ).classes("text-xs text-gray-400 italic")
 
     def _get_status_config(self, status: InvocationStatus) -> dict:
         """Get icon and color configuration for a status."""

@@ -1,192 +1,124 @@
-"""Deploy LangGraph agent to AWS Bedrock AgentCore."""
+"""Deploy LangGraph agent to AWS Bedrock AgentCore using CDK.
 
-import sys
+This deployment script uses CDK to deploy all infrastructure in phases:
+1. SecretsStack + AgentInfraStack: Secrets, ECR, CodeBuild, IAM
+2. CodeBuild + MemoryStack: Build Docker image AND create Memory (parallel)
+3. RuntimeStack: Create the AgentCore Runtime (needs image to exist)
+"""
+
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
-from .lib.aws import (
-    check_cdk_bootstrap,
-    get_account_id,
-    get_session,
-    get_stack_output,
-    stack_exists,
-)
-from .lib.commands import (
-    CommandError,
-    check_required_commands,
-    run_agentcore_configure,
-    run_agentcore_deploy,
-    run_cdk_bootstrap,
-    run_cdk_deploy,
-)
-from .lib.config import ConfigurationError, DeployConfig, get_deploy_config
+from .lib.aws import check_cdk_bootstrap, get_account_id, get_session
+from .lib.commands import CommandError, check_required_commands, run_cdk_bootstrap
+from .lib.config import ConfigurationError, get_deploy_config
 from .lib.console import (
     console,
     print_config,
     print_error,
     print_final_success,
     print_header,
-    print_next_steps,
     print_step,
     print_success,
     print_warning,
 )
-from .lib.yaml_parser import extract_execution_role_arn
 
 app = typer.Typer(help="Deploy LangGraph agent to AWS Bedrock AgentCore")
 
 
-def step_1_deploy_secrets(config: DeployConfig) -> None:
-    """Deploy Secrets Manager secret via CDK."""
-    print_step("1/6", "Deploying Secrets Manager secret (CDK)...")
+def run_cdk_deploy(
+    config,
+    source_path: str,
+    stacks: list[str],
+    profile: str | None = None,
+) -> bool:
+    """Run CDK deploy for specific stacks with all required context values."""
+    import subprocess
 
     cdk_dir = Path("cdk")
-    result = run_cdk_deploy(
-        stack="SecretsStack",
-        context={
-            "secret_name": config.secret_name,
-            "tavily_api_key": config.tavily_api_key,
-        },
+
+    cmd = [
+        "cdk",
+        "deploy",
+        *stacks,
+        "--require-approval",
+        "never",
+        "--context",
+        f"secret_name={config.secret_name}",
+        "--context",
+        f"tavily_api_key={config.tavily_api_key}",
+        "--context",
+        f"agent_name={config.agent_name}",
+        "--context",
+        f"model_id={config.model_id}",
+        "--context",
+        f"fallback_model_id={config.fallback_model_id}",
+        "--context",
+        f"source_path={source_path}",
+    ]
+
+    if profile:
+        cmd.extend(["--profile", profile])
+
+    stack_names = " ".join(stacks)
+    console.print(f"   Running: cdk deploy {stack_names} ...")
+
+    result = subprocess.run(
+        cmd,
         cwd=cdk_dir,
-        profile=config.aws_profile,
+        capture_output=False,  # Stream output to console
     )
 
-    if not result.success:
-        print_error("SecretsStack deployment failed")
-        raise typer.Exit(1)
-
-    # Verify stack exists
-    session = get_session(config.aws_profile)
-    if not stack_exists(session, "SecretsStack", config.aws_region):
-        print_error("SecretsStack deployment failed")
-        raise typer.Exit(1)
-
-    print_success("Secret deployed via CDK")
+    return result.returncode == 0
 
 
-def step_2_configure_agent(config: DeployConfig) -> None:
-    """Configure agent for container deployment."""
-    print_step("2/6", "Configuring agent...")
+def trigger_codebuild(config, profile: str | None = None) -> bool:
+    """Trigger CodeBuild to build the Docker image."""
+    import time
 
-    result = run_agentcore_configure(
-        entrypoint="langgraph_agent_web_search.py",
-        agent_name=config.agent_name,
-        region=config.aws_region,
-        profile=config.aws_profile,
-    )
+    session = get_session(profile)
+    codebuild = session.client("codebuild", region_name=config.aws_region)
 
-    if not result.success:
-        print_error("Agent configuration failed")
-        if result.stderr:
-            console.print(result.stderr)
-        raise typer.Exit(1)
+    project_name = f"{config.agent_name}-builder"
 
-    print_success("Agent configured for container deployment")
+    try:
+        console.print(f"   Triggering CodeBuild project: {project_name}")
+        response = codebuild.start_build(projectName=project_name)
+        build_id = response["build"]["id"]
+        console.print(f"   Build started: {build_id}")
 
+        # Poll for build completion (CodeBuild doesn't have a waiter)
+        console.print("   Waiting for build to complete...")
+        max_attempts = 60
+        delay = 10
 
-def step_3_deploy_agent(config: DeployConfig) -> None:
-    """Deploy agent to AgentCore."""
-    print_step("3/6", "Deploying to AgentCore (this may take several minutes)...")
+        while max_attempts > 0:
+            build_response = codebuild.batch_get_builds(ids=[build_id])
+            build = build_response["builds"][0]
+            build_status = build.get("buildStatus")
+            build_complete = build.get("buildComplete", False)
 
-    result = run_agentcore_deploy(
-        env_vars={
-            "AWS_REGION": config.aws_region,
-            "SECRET_NAME": config.secret_name,
-            "MODEL_ID": config.model_id,
-            "FALLBACK_MODEL_ID": config.fallback_model_id,
-        },
-        profile=config.aws_profile,
-    )
+            if build_complete:
+                if build_status == "SUCCEEDED":
+                    return True
+                else:
+                    console.print(f"   [red]Build failed with status: {build_status}[/red]")
+                    return False
 
-    if not result.success:
-        print_error("Agent deployment failed")
-        raise typer.Exit(1)
+            console.print(f"   Status: {build_status}...")
+            time.sleep(delay)
+            max_attempts -= 1
 
-    print_success("Deployment complete")
+        console.print("   [red]Timeout waiting for build[/red]")
+        return False
 
-
-def step_4_extract_role_arn(config: DeployConfig) -> tuple[str, str]:
-    """Extract execution role ARN and secret ARN."""
-    print_step("4/6", "Extracting execution role ARN...")
-
-    config_path = Path(".bedrock_agentcore.yaml")
-    if not config_path.exists():
-        print_error(".bedrock_agentcore.yaml not found after deployment")
-        raise typer.Exit(1)
-
-    role_arn = extract_execution_role_arn(config_path, config.agent_name)
-    if not role_arn:
-        print_error("Could not extract execution role ARN from .bedrock_agentcore.yaml")
-        console.print(f"   Check that agent '{config.agent_name}' exists in the config file")
-        raise typer.Exit(1)
-
-    print_success(f"Found role: {role_arn}")
-
-    # Get secret ARN from CDK outputs
-    session = get_session(config.aws_profile)
-    secret_arn = get_stack_output(session, "SecretsStack", "SecretArn", config.aws_region)
-
-    if not secret_arn:
-        print_error("Could not retrieve Secret ARN from CloudFormation outputs")
-        raise typer.Exit(1)
-
-    print_success(f"Found secret: {secret_arn}")
-
-    return role_arn, secret_arn
-
-
-def step_5_grant_permissions(
-    config: DeployConfig, role_arn: str, secret_arn: str
-) -> None:
-    """Grant IAM permissions via CDK."""
-    print_step("5/6", "Granting IAM permissions (CDK)...")
-
-    cdk_dir = Path("cdk")
-    result = run_cdk_deploy(
-        stack="IamPolicyStack",
-        context={
-            "execution_role_arn": role_arn,
-            "secret_arn": secret_arn,
-        },
-        cwd=cdk_dir,
-        profile=config.aws_profile,
-    )
-
-    if not result.success:
-        print_error("IamPolicyStack deployment failed")
-        raise typer.Exit(1)
-
-    # Verify stack exists
-    session = get_session(config.aws_profile)
-    if not stack_exists(session, "IamPolicyStack", config.aws_region):
-        print_error("IamPolicyStack deployment failed")
-        raise typer.Exit(1)
-
-    print_success("IAM policy attached via CDK")
-
-
-def step_6_restart_containers(config: DeployConfig) -> None:
-    """Restart containers to pick up IAM permissions."""
-    print_step("6/6", "Restarting containers to apply IAM permissions...")
-
-    # Run agentcore deploy again - this triggers an update and restarts containers
-    result = run_agentcore_deploy(
-        env_vars={
-            "AWS_REGION": config.aws_region,
-            "SECRET_NAME": config.secret_name,
-            "MODEL_ID": config.model_id,
-            "FALLBACK_MODEL_ID": config.fallback_model_id,
-        },
-        profile=config.aws_profile,
-    )
-
-    if not result.success:
-        print_warning("Container restart may have failed, but IAM permissions are in place")
-        print_warning("Try invoking the agent - new containers will have correct permissions")
-    else:
-        print_success("Containers restarted with IAM permissions")
+    except Exception as e:
+        console.print(f"   [red]CodeBuild error: {e}[/red]")
+        return False
 
 
 @app.command()
@@ -199,20 +131,13 @@ def deploy(
     """
     Deploy the LangGraph agent to AWS Bedrock AgentCore.
 
-    This command performs a 6-step deployment:
-
-    1. Deploy Secrets Manager secret via CDK
-
-    2. Configure agent for container deployment
-
-    3. Deploy to AgentCore
-
-    4. Extract execution role ARN
-
-    5. Grant IAM permissions via CDK
-
-    6. Restart containers to apply IAM permissions
+    This command:
+    1. Deploys CDK infrastructure (SecretsStack + AgentInfraStack)
+    2. Triggers CodeBuild to build the agent container
+    3. Deploys the RuntimeStack (AgentCore Runtime via CDK)
     """
+    start_time = time.time()
+
     try:
         # Check required commands
         check_required_commands()
@@ -234,7 +159,7 @@ def deploy(
             print_success("CDK bootstrapped successfully")
 
         # Print header
-        print_header("LangGraph Agent Deployment")
+        print_header("LangGraph Agent Deployment (CDK)")
         print_config(
             region=config.aws_region,
             agent_name=config.agent_name,
@@ -243,17 +168,75 @@ def deploy(
             profile=config.aws_profile,
         )
 
-        # Execute deployment steps
-        step_1_deploy_secrets(config)
-        step_2_configure_agent(config)
-        step_3_deploy_agent(config)
-        role_arn, secret_arn = step_4_extract_role_arn(config)
-        step_5_grant_permissions(config, role_arn, secret_arn)
-        step_6_restart_containers(config)
+        # Get absolute path to project root
+        source_path = str(Path.cwd().absolute())
 
-        # Success message
-        print_final_success("Deployment successful!")
-        print_next_steps(config.aws_profile)
+        # Step 1: Deploy infrastructure stacks (SecretsStack + AgentInfraStack)
+        print_step("1/3", "Deploying infrastructure (SecretsStack + AgentInfraStack)...")
+
+        if not run_cdk_deploy(config, source_path, ["SecretsStack", "AgentInfraStack"], profile):
+            print_error("CDK infrastructure deployment failed")
+            raise typer.Exit(1)
+
+        print_success("Infrastructure stacks deployed successfully")
+
+        # Step 2: Run CodeBuild + MemoryStack in parallel
+        print_step("2/3", "Building container + deploying Memory (parallel)...")
+
+        codebuild_success = False
+        memory_success = False
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            # Submit both tasks
+            codebuild_future = executor.submit(trigger_codebuild, config, profile)
+            memory_future = executor.submit(
+                run_cdk_deploy, config, source_path, ["MemoryStack"], profile
+            )
+
+            # Wait for both to complete and collect results
+            for future in as_completed([codebuild_future, memory_future]):
+                if future == codebuild_future:
+                    codebuild_success = future.result()
+                    if codebuild_success:
+                        console.print("   [green]✓[/green] CodeBuild completed")
+                    else:
+                        console.print("   [red]✗[/red] CodeBuild failed")
+                else:
+                    memory_success = future.result()
+                    if memory_success:
+                        console.print("   [green]✓[/green] MemoryStack deployed")
+                    else:
+                        console.print("   [red]✗[/red] MemoryStack deployment failed")
+
+        if not codebuild_success:
+            print_error("CodeBuild failed - check AWS Console for details")
+            raise typer.Exit(1)
+
+        if not memory_success:
+            print_error("MemoryStack deployment failed")
+            raise typer.Exit(1)
+
+        print_success("Container built and Memory deployed successfully")
+
+        # Step 3: Deploy RuntimeStack (AgentCore Runtime)
+        print_step("3/3", "Deploying RuntimeStack (AgentCore Runtime)...")
+
+        if not run_cdk_deploy(config, source_path, ["RuntimeStack"], profile):
+            print_error("Runtime deployment failed")
+            raise typer.Exit(1)
+
+        print_success("RuntimeStack deployed successfully")
+
+        # Success message with elapsed time
+        elapsed = time.time() - start_time
+        minutes, seconds = divmod(int(elapsed), 60)
+        time_str = f"{minutes}m {seconds}s" if minutes else f"{seconds}s"
+
+        print_final_success(f"Deployment successful! (Total time: {time_str})")
+        console.print()
+        console.print("[bold]Next steps:[/bold]")
+        console.print("  - Test: make invoke PROFILE=<profile>")
+        console.print("  - Destroy: make destroy-all PROFILE=<profile>")
 
     except ConfigurationError:
         raise typer.Exit(1)

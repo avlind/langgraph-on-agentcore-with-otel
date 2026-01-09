@@ -2,8 +2,13 @@
 
 from nicegui import ui
 
-from ..lib.aws_config import get_aws_profiles, get_current_profile
-from ..lib.models import AppConfig, InvocationResult, InvocationStatus, Prompt
+from ..lib.aws_config import (
+    get_aws_profiles,
+    get_current_profile,
+    get_default_agent_name,
+    list_agent_runtimes,
+)
+from ..lib.models import AgentRuntime, AppConfig, InvocationResult, InvocationStatus, Prompt
 
 
 class ExecutionPanel:
@@ -34,6 +39,10 @@ class ExecutionPanel:
         self.completed_count = 0
         self._result_statuses: dict[str, InvocationStatus] = {}  # Track previous status
 
+        # Agent tracking
+        self._agents: list[AgentRuntime] = []
+        self._agent_map: dict[str, AgentRuntime] = {}  # name -> AgentRuntime
+
         # UI elements
         self._selected_label = None
         self._progress_bar = None
@@ -42,6 +51,8 @@ class ExecutionPanel:
         self._run_selected_btn = None
         self._run_all_btn = None
         self._cancel_btn = None
+        self._agent_select = None
+        self._agent_refresh_btn = None
 
     def render(self) -> None:
         """Render the execution panel."""
@@ -65,6 +76,25 @@ class ExecutionPanel:
 
             # Sync the config with the actual selected profile value
             self._update_profile(default_profile)
+
+            # Agent selector with refresh button
+            with ui.row().classes("w-full items-end gap-2 mb-2"):
+                self._agent_select = ui.select(
+                    label="Agent Runtime",
+                    options=[],
+                    on_change=lambda e: self._update_agent(e.value),
+                ).classes("flex-grow")
+                self._agent_refresh_btn = (
+                    ui.button(
+                        icon="refresh",
+                        on_click=self._refresh_agents,
+                    )
+                    .props("flat dense")
+                    .tooltip("Refresh agent list")
+                )
+
+            # Load agents for initial profile
+            self._refresh_agents()
 
             # Concurrency slider
             with ui.row().classes("w-full items-center gap-2 mb-2"):
@@ -140,8 +170,61 @@ class ExecutionPanel:
                         ui.label("failed").classes("text-xs text-gray-500")
 
     def _update_profile(self, profile: str) -> None:
-        """Update AWS profile configuration."""
+        """Update AWS profile configuration and refresh agents."""
         self.config.aws_profile = profile
+        self.config.selected_agent = None  # Clear agent selection on profile change
+        self.on_config_change(self.config)
+        # Refresh agents list for new profile (if UI is rendered)
+        if self._agent_select is not None:
+            self._refresh_agents()
+
+    def _refresh_agents(self) -> None:
+        """Refresh the list of available agents."""
+        self._agents = list_agent_runtimes(
+            profile=self.config.aws_profile,
+            region=self.config.aws_region,
+        )
+
+        # Build name -> AgentRuntime map and options list
+        self._agent_map = {agent.display_name: agent for agent in self._agents}
+        options = [agent.display_name for agent in self._agents]
+
+        # Update dropdown
+        if self._agent_select:
+            self._agent_select.options = options
+            self._agent_select.update()
+
+            if options:
+                # Try to find agent matching AGENT_NAME from .env
+                default_agent_name = get_default_agent_name()
+                default_agent = None
+
+                if default_agent_name:
+                    # Look for exact match by name
+                    matching = [a for a in self._agents if a.name == default_agent_name]
+                    if matching:
+                        default_agent = matching[0]
+
+                # Fall back to first READY agent, then first agent
+                if not default_agent:
+                    ready_agents = [a for a in self._agents if a.status == "READY"]
+                    default_agent = ready_agents[0] if ready_agents else self._agents[0]
+
+                self._agent_select.value = default_agent.display_name
+                self._update_agent(default_agent.display_name)
+                ui.notify(f"Found {len(options)} agent(s)", type="positive")
+            else:
+                self._agent_select.value = None
+                self.config.selected_agent = None
+                self.on_config_change(self.config)
+                ui.notify("No agents found for this profile/region", type="warning")
+
+    def _update_agent(self, display_name: str | None) -> None:
+        """Update selected agent configuration."""
+        if display_name and display_name in self._agent_map:
+            self.config.selected_agent = self._agent_map[display_name]
+        else:
+            self.config.selected_agent = None
         self.on_config_change(self.config)
 
     def _update_concurrent(self, value: int) -> None:

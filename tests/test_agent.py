@@ -8,7 +8,7 @@ from botocore.exceptions import ClientError
 
 
 class TestFetchTavilyApiKey:
-    """Tests for the fetch_tavily_api_key function."""
+    """Tests for the fetch_tavily_api_key_from_secrets_manager function."""
 
     def test_successful_fetch(self, mock_boto_client):
         """Test successful secret retrieval from Secrets Manager."""

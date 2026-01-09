@@ -18,7 +18,7 @@
     {
       "id": "e112aae4-a418-4ebb-bd87-2f6772f393c8",
       "name": "Stock Price",
-      "text": "What is the current stock price of Amazon?",
+      "text": "What is the current stock price of Microsoft?",
       "category": "finance",
       "created_at": "2026-01-02T11:29:58.696683"
     },

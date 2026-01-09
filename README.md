@@ -673,21 +673,58 @@ cdk ls
 
 ## Key Dependencies
 
-| Package                                   | Purpose                        |
-| ----------------------------------------- | ------------------------------ |
-| `langgraph`                               | Agent graph framework          |
-| `langchain`                               | LLM abstraction layer          |
-| `langchain-aws`                           | Bedrock integration            |
-| `langchain-community`                     | Tavily search tool             |
-| `tavily-python`                           | Tavily API client              |
-| `bedrock-agentcore`                       | AgentCore runtime SDK          |
-| `bedrock-agentcore-starter-toolkit`       | CLI tools                      |
-| `opentelemetry-instrumentation-langchain` | LangChain tracing              |
-| `aws-opentelemetry-distro`                | AWS OTEL distribution          |
-| `aws-cdk-lib`                             | AWS CDK infrastructure library |
-| `constructs`                              | CDK constructs library         |
-| `nicegui`                                 | Web UI for testing (optional)  |
-| `pytest`                                  | Testing framework              |
+Dependencies are organized by purpose:
+
+### Runtime Dependencies (Container)
+These are packaged in the Docker container and deployed to AWS:
+
+| Package                                   | Purpose                   |
+| ----------------------------------------- | ------------------------- |
+| `langgraph`                               | Agent graph framework     |
+| `langchain` / `langchain-aws`             | LLM abstraction & Bedrock |
+| `langchain-community` / `langchain-tavily`| Tavily search tool        |
+| `bedrock-agentcore`                       | AgentCore runtime SDK     |
+| `opentelemetry-instrumentation-langchain` | LangChain tracing         |
+| `aws-opentelemetry-distro`                | AWS OTEL distribution     |
+
+### Deployment Tools (Local Only)
+Required for deploying infrastructure with CDK:
+
+| Package         | Purpose                        |
+| --------------- | ------------------------------ |
+| `aws-cdk-lib`   | AWS CDK infrastructure library |
+| `constructs`    | CDK constructs library         |
+| `typer`         | CLI framework for scripts      |
+
+Install with: `uv sync --extra deploy`
+
+### Local Testing (Local Only)
+Required for running the agent locally without deploying:
+
+| Package                             | Purpose                    |
+| ----------------------------------- | -------------------------- |
+| `bedrock-agentcore-starter-toolkit` | Local dev server & CLI     |
+
+Install with: `uv sync --extra local`
+
+### Testing UI (Optional)
+Web interface for testing deployed agents:
+
+| Package   | Purpose                  |
+| --------- | ------------------------ |
+| `nicegui` | Web UI framework         |
+
+Install with: `uv sync --extra ui`
+
+### Development Tools
+Code quality and testing:
+
+| Package      | Purpose               |
+| ------------ | --------------------- |
+| `pytest`     | Testing framework     |
+| `ruff`       | Linting and formatting|
+
+Installed automatically with `uv sync`
 
 ## Makefile Commands
 

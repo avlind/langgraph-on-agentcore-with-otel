@@ -38,6 +38,8 @@ class RuntimeStack(Stack):
         secret_name: str,
         ecr_repository_uri: str,
         execution_role_arn: str,
+        subnet_ids: list[str],
+        security_group_ids: list[str],
         **kwargs,
     ) -> None:
         """
@@ -52,6 +54,8 @@ class RuntimeStack(Stack):
             secret_name: Name of the secret containing API keys.
             ecr_repository_uri: URI of the ECR repository (from AgentInfraStack).
             execution_role_arn: ARN of the execution role (from AgentInfraStack).
+            subnet_ids: Private subnet IDs for VPC networking.
+            security_group_ids: Security group IDs for VPC networking.
             **kwargs: Additional stack properties.
         """
         super().__init__(scope, construct_id, **kwargs)
@@ -65,7 +69,13 @@ class RuntimeStack(Stack):
                 "containerConfiguration": {"containerUri": f"{ecr_repository_uri}:latest"}
             },
             role_arn=execution_role_arn,
-            network_configuration={"networkMode": "PUBLIC"},
+            network_configuration=agentcore.CfnRuntime.NetworkConfigurationProperty(
+                network_mode="PRIVATE",
+                network_mode_config=agentcore.CfnRuntime.VpcConfigProperty(
+                    subnets=subnet_ids,
+                    security_groups=security_group_ids,
+                ),
+            ),
             environment_variables={
                 "AWS_REGION": self.region,
                 "SECRET_NAME": secret_name,

@@ -28,6 +28,7 @@ import os
 from pathlib import Path
 
 import aws_cdk as cdk
+from aws_cdk import aws_ec2 as ec2
 from stacks import (
     AGENT_INFRA_STACK_NAME,
     CONTEXT_AGENT_NAME,
@@ -110,6 +111,7 @@ if agent_name:
 # This stack must be deployed AFTER CodeBuild has pushed the Docker image
 # It uses cross-stack references from AgentInfraStack
 if infra_stack:
+    private_subnets = infra_stack.vpc.select_subnets(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS)
     runtime_stack = RuntimeStack(
         app,
         RUNTIME_STACK_NAME,
@@ -119,6 +121,8 @@ if infra_stack:
         secret_name=secret_name,
         ecr_repository_uri=infra_stack.ecr_repo.repository_uri,
         execution_role_arn=infra_stack.execution_role.role_arn,
+        subnet_ids=[s.subnet_id for s in private_subnets.subnets],
+        security_group_ids=[infra_stack.agent_security_group.security_group_id],
         env=env,
     )
     runtime_stack.add_dependency(infra_stack)

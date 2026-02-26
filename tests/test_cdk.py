@@ -196,11 +196,54 @@ class TestAgentInfraStack:
             },
         )
 
+    def test_vpc_created(self, template):
+        """Test that a VPC is created."""
+        template.resource_count_is("AWS::EC2::VPC", 1)
+
+    def test_nat_gateway_created(self, template):
+        """Test that a NAT gateway is created."""
+        template.resource_count_is("AWS::EC2::NatGateway", 1)
+
+    def test_security_group_created(self, template):
+        """Test that a security group is created for the agent."""
+        template.has_resource_properties(
+            "AWS::EC2::SecurityGroup",
+            {
+                "GroupDescription": "Security group for AgentCore runtime container",
+            },
+        )
+
+    def test_execution_role_has_eni_permissions(self, template):
+        """Test that execution role has ENI permissions for VPC networking."""
+        template.has_resource_properties(
+            "AWS::IAM::Policy",
+            {
+                "PolicyDocument": Match.object_like(
+                    {
+                        "Statement": Match.array_with(
+                            [
+                                Match.object_like(
+                                    {
+                                        "Action": Match.array_with(
+                                            ["ec2:CreateNetworkInterface"]
+                                        ),
+                                        "Effect": "Allow",
+                                    }
+                                )
+                            ]
+                        )
+                    }
+                )
+            },
+        )
+
     def test_outputs_exist(self, template):
         """Test that required outputs are defined."""
         template.has_output("ECRRepositoryUri", {})
         template.has_output("CodeBuildProjectName", {})
         template.has_output("ExecutionRoleArn", {})
+        template.has_output("VpcId", {})
+        template.has_output("SecurityGroupId", {})
 
 
 class TestMemoryStack:
@@ -277,6 +320,8 @@ class TestRuntimeStack:
             secret_name="test-secret",
             ecr_repository_uri="123456789012.dkr.ecr.us-east-2.amazonaws.com/test-repo",
             execution_role_arn="arn:aws:iam::123456789012:role/TestExecutionRole",
+            subnet_ids=["subnet-abc123", "subnet-def456"],
+            security_group_ids=["sg-abc123"],
             env=Environment(account="123456789012", region="us-east-2"),
         )
         return Template.from_stack(stack)
@@ -323,11 +368,23 @@ class TestRuntimeStack:
             },
         )
 
-    def test_runtime_has_public_network_mode(self, template):
-        """Test that Runtime has public network mode."""
+    def test_runtime_has_private_network_mode(self, template):
+        """Test that Runtime has private network mode with VPC config."""
         template.has_resource_properties(
             "AWS::BedrockAgentCore::Runtime",
-            {"NetworkConfiguration": {"NetworkMode": "PUBLIC"}},
+            {
+                "NetworkConfiguration": Match.object_like(
+                    {
+                        "NetworkMode": "PRIVATE",
+                        "NetworkModeConfig": Match.object_like(
+                            {
+                                "Subnets": ["subnet-abc123", "subnet-def456"],
+                                "SecurityGroups": ["sg-abc123"],
+                            }
+                        ),
+                    }
+                )
+            },
         )
 
     def test_runtime_has_http_protocol(self, template):

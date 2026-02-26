@@ -29,6 +29,9 @@ from aws_cdk import (
     aws_codebuild as codebuild,
 )
 from aws_cdk import (
+    aws_ec2 as ec2,
+)
+from aws_cdk import (
     aws_ecr as ecr,
 )
 from aws_cdk import (
@@ -74,6 +77,32 @@ class AgentInfraStack(Stack):
             **kwargs: Additional stack properties.
         """
         super().__init__(scope, construct_id, **kwargs)
+
+        # 0. VPC for private networking
+        vpc = ec2.Vpc(
+            self,
+            "AgentVpc",
+            max_azs=2,
+            nat_gateways=1,
+            subnet_configuration=[
+                ec2.SubnetConfiguration(
+                    name="Public",
+                    subnet_type=ec2.SubnetType.PUBLIC,
+                ),
+                ec2.SubnetConfiguration(
+                    name="Private",
+                    subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS,
+                ),
+            ],
+        )
+
+        agent_security_group = ec2.SecurityGroup(
+            self,
+            "AgentSecurityGroup",
+            vpc=vpc,
+            description="Security group for AgentCore runtime container",
+            allow_all_outbound=True,
+        )
 
         # Normalize agent name for ECR (lowercase, no special chars)
         ecr_repo_name = f"agentcore-{agent_name}".lower().replace("_", "-")
@@ -286,6 +315,21 @@ class AgentInfraStack(Stack):
             )
         )
 
+        # Grant ENI permissions for VPC networking (PRIVATE network mode)
+        execution_role.add_to_policy(
+            iam.PolicyStatement(
+                sid="ENIAccess",
+                actions=[
+                    "ec2:CreateNetworkInterface",
+                    "ec2:DescribeNetworkInterfaces",
+                    "ec2:DeleteNetworkInterface",
+                    "ec2:AssignPrivateIpAddresses",
+                    "ec2:UnassignPrivateIpAddresses",
+                ],
+                resources=["*"],
+            )
+        )
+
         # Outputs - for visibility (RuntimeStack uses cross-stack references directly)
         CfnOutput(
             self,
@@ -308,7 +352,23 @@ class AgentInfraStack(Stack):
             description="IAM execution role ARN for AgentCore runtime",
         )
 
+        CfnOutput(
+            self,
+            "VpcId",
+            value=vpc.vpc_id,
+            description="VPC ID for AgentCore runtime",
+        )
+
+        CfnOutput(
+            self,
+            "SecurityGroupId",
+            value=agent_security_group.security_group_id,
+            description="Security group ID for AgentCore runtime",
+        )
+
         # Store references for cross-stack usage
         self.ecr_repo = ecr_repo
         self.build_project = build_project
         self.execution_role = execution_role
+        self.vpc = vpc
+        self.agent_security_group = agent_security_group

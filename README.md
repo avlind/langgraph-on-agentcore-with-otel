@@ -23,11 +23,13 @@ flowchart TB
         subgraph AgentCore["Bedrock AgentCore"]
             Runtime[Agent Runtime]
             Memory[Agent Memory]
-            subgraph Agent["LangGraph Agent"]
-                Chatbot[Chatbot Node]
-                Tools[Tools Node]
-                Chatbot -->|tool call| Tools
-                Tools -->|result| Chatbot
+            subgraph VPC["VPC (Private Subnet + NAT Gateway)"]
+                subgraph Agent["LangGraph Agent"]
+                    Chatbot[Chatbot Node]
+                    Tools[Tools Node]
+                    Chatbot -->|tool call| Tools
+                    Tools -->|result| Chatbot
+                end
             end
         end
 
@@ -50,11 +52,12 @@ flowchart TB
     Runtime --> Agent
     Runtime --> Memory
     Chatbot --> Bedrock
-    Tools --> Tavily
+    Tools -->|via NAT| Tavily
     Runtime -.->|fetch secret| Secrets
     Runtime -.->|pull image| ECR
     SecretsStack -.->|creates| Secrets
     InfraStack -.->|creates| ECR
+    InfraStack -.->|creates| VPC
     RuntimeStack -.->|creates| Runtime
 ```
 
@@ -271,7 +274,7 @@ uv run python -m scripts.deploy
 
 | Step | Action                                                                                    |
 | ---- | ----------------------------------------------------------------------------------------- |
-| 1/3  | **CDK Infrastructure** - Deploys SecretsStack + AgentInfraStack (ECR, CodeBuild, IAM, Memory) |
+| 1/3  | **CDK Infrastructure** - Deploys SecretsStack + AgentInfraStack (VPC, ECR, CodeBuild, IAM, Memory) |
 | 2/3  | **CodeBuild** - Triggers build to create Docker image and push to ECR                     |
 | 3/3  | **CDK RuntimeStack** - Creates AgentCore Runtime with container and environment config    |
 
@@ -546,6 +549,8 @@ Creates all infrastructure required to build and run the agent.
 
 | Resource | Type | Description |
 |----------|------|-------------|
+| `AgentVpc` | `ec2.Vpc` | VPC with public + private subnets and NAT gateway |
+| `AgentSecurityGroup` | `ec2.SecurityGroup` | Security group for agent container (all outbound) |
 | `AgentECR` | `ecr.Repository` | Container registry for agent image |
 | `SourceAsset` | `s3_assets.Asset` | Source code uploaded for CodeBuild |
 | `CodeBuildRole` | `iam.Role` | IAM role for CodeBuild project |
@@ -553,7 +558,7 @@ Creates all infrastructure required to build and run the agent.
 | `ExecutionRole` | `iam.Role` | Runtime execution role with permissions |
 | `AgentMemory` | `agentcore.CfnMemory` | Agent memory store for conversation history |
 
-**Outputs:** `ECRRepositoryUri`, `CodeBuildProjectName`, `ExecutionRoleArn`, `MemoryArn`
+**Outputs:** `ECRRepositoryUri`, `CodeBuildProjectName`, `ExecutionRoleArn`, `VpcId`, `SecurityGroupId`, `MemoryArn`
 
 **IAM Permissions granted to ExecutionRole:**
 
@@ -561,6 +566,7 @@ Creates all infrastructure required to build and run the agent.
 - `bedrock:InvokeModel*` - Call Claude models
 - `ecr:Get*`, `ecr:BatchGet*` - Pull container images
 - `logs:CreateLog*`, `logs:PutLogEvents` - Write CloudWatch logs
+- `ec2:CreateNetworkInterface`, `ec2:Describe*`, `ec2:Delete*` - VPC networking (ENI management)
 
 #### RuntimeStack
 
@@ -647,7 +653,7 @@ cdk ls
 │       ├── __init__.py            # Stack exports
 │       ├── constants.py           # Shared constants (stack names, context keys)
 │       ├── secrets_stack.py       # SecretsStack (Secrets Manager)
-│       ├── agent_infra_stack.py   # AgentInfraStack (ECR, CodeBuild, IAM, Memory)
+│       ├── agent_infra_stack.py   # AgentInfraStack (VPC, ECR, CodeBuild, IAM, Memory)
 │       └── runtime_stack.py       # RuntimeStack (AgentCore Runtime)
 ├── ui/                            # NiceGUI testing web application
 │   ├── app.py                     # Main application entry point
@@ -884,8 +890,9 @@ Running this agent incurs costs from multiple AWS services:
 
 ### Network Security
 
-- Agent runs in AWS-managed VPC (AgentCore infrastructure)
-- Outbound internet access required for Tavily API calls
+- Agent runs in a **private subnet** with no public IP (PRIVATE network mode)
+- Outbound internet access via **NAT gateway** for Tavily API and Bedrock calls
+- Security group allows all outbound traffic (HTTPS to external APIs) with no inbound rules
 - All AWS API calls use HTTPS
 
 ### Container Security
@@ -935,7 +942,7 @@ Since all resources are CDK-managed, `cdk destroy --all` removes everything:
 | Stack | Resources Removed |
 |-------|-------------------|
 | `RuntimeStack` | AgentCore Runtime |
-| `AgentInfraStack` | ECR repository, CodeBuild project, IAM execution role, Agent Memory, S3 source assets |
+| `AgentInfraStack` | VPC, NAT gateway, security group, ECR repository, CodeBuild project, IAM execution role, Agent Memory, S3 source assets |
 | `SecretsStack` | Secrets Manager secret |
 
 > **Note:** The ECR repository is configured with `empty_on_delete=True` and `removal_policy=DESTROY`, so images are automatically deleted when the stack is destroyed.

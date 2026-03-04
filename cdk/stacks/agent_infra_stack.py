@@ -7,7 +7,6 @@ AWS Bedrock AgentCore, including:
 - CodeBuild project to build the Docker image
 - IAM execution role with required permissions
 
-The AgentCore Memory is created in a separate MemoryStack (for parallel deployment).
 The AgentCore Runtime is created in a separate RuntimeStack after CodeBuild
 has pushed the Docker image (since Runtime validation requires the image to exist).
 
@@ -47,8 +46,7 @@ class AgentInfraStack(Stack):
     """
     Stack for AgentCore infrastructure (ECR, CodeBuild, IAM).
 
-    This stack creates build infrastructure. Memory is in MemoryStack (for parallel
-    deployment with CodeBuild). Runtime is in RuntimeStack (needs image to exist).
+    This stack creates build infrastructure. Runtime is in RuntimeStack (needs image to exist).
     """
 
     def __init__(

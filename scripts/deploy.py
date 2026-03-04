@@ -1,13 +1,12 @@
 """Deploy LangGraph agent to AWS Bedrock AgentCore using CDK.
 
 This deployment script uses CDK to deploy all infrastructure in phases:
-1. SecretsStack + AgentInfraStack: Secrets, ECR, CodeBuild, IAM
-2. CodeBuild + MemoryStack: Build Docker image AND create Memory (parallel)
+1. SecretsStack + AgentInfraStack: Secrets, ECR, CodeBuild, IAM, VPC
+2. CodeBuild: Build Docker image and push to ECR
 3. RuntimeStack: Create the AgentCore Runtime (needs image to exist)
 """
 
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Annotated
 
@@ -180,43 +179,14 @@ def deploy(
 
         print_success("Infrastructure stacks deployed successfully")
 
-        # Step 2: Run CodeBuild + MemoryStack in parallel
-        print_step("2/3", "Building container + deploying Memory (parallel)...")
+        # Step 2: Build Docker image via CodeBuild
+        print_step("2/3", "Building container image (CodeBuild)...")
 
-        codebuild_success = False
-        memory_success = False
-
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            # Submit both tasks
-            codebuild_future = executor.submit(trigger_codebuild, config, profile)
-            memory_future = executor.submit(
-                run_cdk_deploy, config, source_path, ["MemoryStack"], profile
-            )
-
-            # Wait for both to complete and collect results
-            for future in as_completed([codebuild_future, memory_future]):
-                if future == codebuild_future:
-                    codebuild_success = future.result()
-                    if codebuild_success:
-                        console.print("   [green]✓[/green] CodeBuild completed")
-                    else:
-                        console.print("   [red]✗[/red] CodeBuild failed")
-                else:
-                    memory_success = future.result()
-                    if memory_success:
-                        console.print("   [green]✓[/green] MemoryStack deployed")
-                    else:
-                        console.print("   [red]✗[/red] MemoryStack deployment failed")
-
-        if not codebuild_success:
+        if not trigger_codebuild(config, profile):
             print_error("CodeBuild failed - check AWS Console for details")
             raise typer.Exit(1)
 
-        if not memory_success:
-            print_error("MemoryStack deployment failed")
-            raise typer.Exit(1)
-
-        print_success("Container built and Memory deployed successfully")
+        print_success("Container image built successfully")
 
         # Step 3: Deploy RuntimeStack (AgentCore Runtime)
         print_step("3/3", "Deploying RuntimeStack (AgentCore Runtime)...")

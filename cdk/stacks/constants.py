@@ -4,7 +4,6 @@
 SECRETS_STACK_NAME = "SecretsStack"
 IAM_POLICY_STACK_NAME = "IamPolicyStack"  # Deprecated
 AGENT_INFRA_STACK_NAME = "AgentInfraStack"  # ECR, CodeBuild, IAM
-MEMORY_STACK_NAME = "MemoryStack"  # AgentCore Memory (parallel with CodeBuild)
 RUNTIME_STACK_NAME = "RuntimeStack"  # AgentCore Runtime only
 
 # Resource identifiers

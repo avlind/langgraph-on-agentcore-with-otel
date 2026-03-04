@@ -10,12 +10,10 @@ from .constants import (
     CONTEXT_SECRET_NAME,
     CONTEXT_SOURCE_PATH,
     CONTEXT_TAVILY_API_KEY,
-    MEMORY_STACK_NAME,
     RUNTIME_STACK_NAME,
     SECRETS_MANAGER_POLICY_NAME,
     SECRETS_STACK_NAME,
 )
-from .memory_stack import MemoryStack
 from .runtime_stack import RuntimeStack
 from .secrets_stack import SecretsStack
 
@@ -23,12 +21,10 @@ __all__ = [
     # Stacks
     "SecretsStack",
     "AgentInfraStack",
-    "MemoryStack",
     "RuntimeStack",
     # Stack name constants
     "SECRETS_STACK_NAME",
     "AGENT_INFRA_STACK_NAME",
-    "MEMORY_STACK_NAME",
     "RUNTIME_STACK_NAME",
     "SECRETS_MANAGER_POLICY_NAME",
     # Context keys

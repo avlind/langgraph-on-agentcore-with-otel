@@ -24,7 +24,6 @@ if HAS_CDK:
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "cdk"))
 
     from stacks.agent_infra_stack import AgentInfraStack
-    from stacks.memory_stack import MemoryStack
     from stacks.runtime_stack import RuntimeStack
     from stacks.secrets_stack import SecretsStack
 
@@ -246,64 +245,6 @@ class TestAgentInfraStack:
         template.has_output("SecurityGroupId", {})
 
 
-class TestMemoryStack:
-    """Tests for the MemoryStack CDK stack."""
-
-    @pytest.fixture
-    def template(self):
-        """Create a template from MemoryStack."""
-        app = App()
-        stack = MemoryStack(
-            app,
-            "TestMemoryStack",
-            agent_name="test-agent",
-        )
-        return Template.from_stack(stack)
-
-    def test_memory_created(self, template):
-        """Test that AgentCore Memory is created."""
-        template.resource_count_is("AWS::BedrockAgentCore::Memory", 1)
-
-    def test_memory_has_correct_name(self, template):
-        """Test that Memory has correct name pattern."""
-        template.has_resource_properties(
-            "AWS::BedrockAgentCore::Memory",
-            {"Name": "test_agent_memory"},
-        )
-
-    def test_memory_has_expiry_duration(self, template):
-        """Test that Memory has event expiry duration set."""
-        template.has_resource_properties(
-            "AWS::BedrockAgentCore::Memory",
-            {"EventExpiryDuration": 30},
-        )
-
-    def test_outputs_exist(self, template):
-        """Test that required outputs are defined."""
-        template.has_output("MemoryArn", {})
-        template.has_output("MemoryName", {})
-
-    def test_empty_agent_name_raises_error(self):
-        """Test that empty agent_name raises ValueError."""
-        app = App()
-        with pytest.raises(ValueError, match="agent_name cannot be empty"):
-            MemoryStack(
-                app,
-                "TestStack",
-                agent_name="",
-            )
-
-    def test_whitespace_only_agent_name_raises_error(self):
-        """Test that whitespace-only agent_name raises ValueError."""
-        app = App()
-        with pytest.raises(ValueError, match="agent_name cannot be empty"):
-            MemoryStack(
-                app,
-                "TestStack",
-                agent_name="   ",
-            )
-
-
 class TestRuntimeStack:
     """Tests for the RuntimeStack CDK stack."""
 
@@ -368,14 +309,14 @@ class TestRuntimeStack:
             },
         )
 
-    def test_runtime_has_private_network_mode(self, template):
-        """Test that Runtime has private network mode with VPC config."""
+    def test_runtime_has_vpc_network_mode(self, template):
+        """Test that Runtime has VPC network mode with subnet/SG config."""
         template.has_resource_properties(
             "AWS::BedrockAgentCore::Runtime",
             {
                 "NetworkConfiguration": Match.object_like(
                     {
-                        "NetworkMode": "PRIVATE",
+                        "NetworkMode": "VPC",
                         "NetworkModeConfig": Match.object_like(
                             {
                                 "Subnets": ["subnet-abc123", "subnet-def456"],

@@ -5,13 +5,12 @@ CDK app for LangGraph AgentCore infrastructure.
 This app defines stacks for deploying a LangGraph agent to AWS Bedrock AgentCore:
 
     SecretsStack - Creates the Tavily API key in Secrets Manager
-    AgentInfraStack - Creates ECR, CodeBuild, IAM role
-    MemoryStack - Creates AgentCore Memory (deployed in parallel with CodeBuild)
+    AgentInfraStack - Creates ECR, CodeBuild, IAM role, VPC
     RuntimeStack - Creates the AgentCore Runtime (deployed after CodeBuild)
 
 Deployment order:
     1. cdk deploy SecretsStack AgentInfraStack  (infrastructure)
-    2. Run CodeBuild + cdk deploy MemoryStack   (parallel)
+    2. Run CodeBuild  (build Docker image)
     3. cdk deploy RuntimeStack  (runtime needs image to exist)
 
 Usage:
@@ -37,11 +36,9 @@ from stacks import (
     CONTEXT_SECRET_NAME,
     CONTEXT_SOURCE_PATH,
     CONTEXT_TAVILY_API_KEY,
-    MEMORY_STACK_NAME,
     RUNTIME_STACK_NAME,
     SECRETS_STACK_NAME,
     AgentInfraStack,
-    MemoryStack,
     RuntimeStack,
     SecretsStack,
 )
@@ -93,17 +90,6 @@ if agent_name and model_id and source_path and secret_name:
         model_id=model_id,
         fallback_model_id=fallback_model_id or model_id,
         source_path=resolved_source_path,
-        env=env,
-    )
-
-# MemoryStack - Creates AgentCore Memory
-# Deployed in parallel with CodeBuild for faster deployment
-memory_stack = None
-if agent_name:
-    memory_stack = MemoryStack(
-        app,
-        MEMORY_STACK_NAME,
-        agent_name=agent_name,
         env=env,
     )
 

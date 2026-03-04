@@ -22,7 +22,6 @@ flowchart TB
     subgraph AWS["AWS Cloud"]
         subgraph AgentCore["Bedrock AgentCore"]
             Runtime[Agent Runtime]
-            Memory[Agent Memory]
             subgraph VPC["VPC (Private Subnet + NAT Gateway)"]
                 subgraph Agent["LangGraph Agent"]
                     Chatbot[Chatbot Node]
@@ -36,6 +35,7 @@ flowchart TB
         Bedrock[Amazon Bedrock<br/>Claude Haiku]
         Secrets[Secrets Manager<br/>Tavily API Key]
         ECR[ECR Repository]
+        CW[CloudWatch Logs<br/>+ X-Ray Traces]
 
         subgraph CDK["CDK Managed"]
             SecretsStack[SecretsStack]
@@ -50,10 +50,10 @@ flowchart TB
 
     User --> Runtime
     Runtime --> Agent
-    Runtime --> Memory
     Chatbot --> Bedrock
     Tools -->|via NAT| Tavily
-    Runtime -.->|fetch secret| Secrets
+    Agent -.->|fetch secret| Secrets
+    Agent -.->|OTel traces| CW
     Runtime -.->|pull image| ECR
     SecretsStack -.->|creates| Secrets
     InfraStack -.->|creates| ECR
@@ -274,7 +274,7 @@ uv run python -m scripts.deploy
 
 | Step | Action                                                                                    |
 | ---- | ----------------------------------------------------------------------------------------- |
-| 1/3  | **CDK Infrastructure** - Deploys SecretsStack + AgentInfraStack (VPC, ECR, CodeBuild, IAM, Memory) |
+| 1/3  | **CDK Infrastructure** - Deploys SecretsStack + AgentInfraStack (VPC, ECR, CodeBuild, IAM) |
 | 2/3  | **CodeBuild** - Triggers build to create Docker image and push to ECR                     |
 | 3/3  | **CDK RuntimeStack** - Creates AgentCore Runtime with container and environment config    |
 
@@ -502,7 +502,7 @@ This project uses **AWS CDK (Python)** to manage all infrastructure declarativel
 
 ### CDK Stacks
 
-The infrastructure is organized into three stacks that deploy in a specific order:
+The infrastructure is organized into three stacks that deploy in phases:
 
 ```mermaid
 flowchart LR
@@ -520,7 +520,6 @@ flowchart LR
         Runtime[RuntimeStack]
     end
 
-    Secrets --> CodeBuild
     Infra --> CodeBuild
     CodeBuild --> Runtime
 
@@ -556,9 +555,8 @@ Creates all infrastructure required to build and run the agent.
 | `CodeBuildRole` | `iam.Role` | IAM role for CodeBuild project |
 | `AgentBuilder` | `codebuild.Project` | Builds Docker image and pushes to ECR |
 | `ExecutionRole` | `iam.Role` | Runtime execution role with permissions |
-| `AgentMemory` | `agentcore.CfnMemory` | Agent memory store for conversation history |
 
-**Outputs:** `ECRRepositoryUri`, `CodeBuildProjectName`, `ExecutionRoleArn`, `VpcId`, `SecurityGroupId`, `MemoryArn`
+**Outputs:** `ECRRepositoryUri`, `CodeBuildProjectName`, `ExecutionRoleArn`, `VpcId`, `SecurityGroupId`
 
 **IAM Permissions granted to ExecutionRole:**
 
@@ -566,7 +564,8 @@ Creates all infrastructure required to build and run the agent.
 - `bedrock:InvokeModel*` - Call Claude models
 - `ecr:Get*`, `ecr:BatchGet*` - Pull container images
 - `logs:CreateLog*`, `logs:PutLogEvents` - Write CloudWatch logs
-- `ec2:CreateNetworkInterface`, `ec2:Describe*`, `ec2:Delete*` - VPC networking (ENI management)
+- `xray:PutTraceSegments`, `xray:PutTelemetryRecords` - OpenTelemetry trace export
+- `ec2:CreateNetworkInterface`, `ec2:DescribeNetworkInterfaces`, `ec2:DeleteNetworkInterface`, `ec2:AssignPrivateIpAddresses`, `ec2:UnassignPrivateIpAddresses` - VPC networking (ENI management)
 
 #### RuntimeStack
 
@@ -653,7 +652,7 @@ cdk ls
 │       ├── __init__.py            # Stack exports
 │       ├── constants.py           # Shared constants (stack names, context keys)
 │       ├── secrets_stack.py       # SecretsStack (Secrets Manager)
-│       ├── agent_infra_stack.py   # AgentInfraStack (VPC, ECR, CodeBuild, IAM, Memory)
+│       ├── agent_infra_stack.py   # AgentInfraStack (VPC, ECR, CodeBuild, IAM)
 │       └── runtime_stack.py       # RuntimeStack (AgentCore Runtime)
 ├── ui/                            # NiceGUI testing web application
 │   ├── app.py                     # Main application entry point
@@ -849,6 +848,10 @@ FALLBACK_MODEL_ID=global.anthropic.claude-sonnet-4-5-20250929-v1:0
 | `AccessDeniedException` | Fail (no fallback) | IAM issue, fallback would fail too |
 | `ValidationException` | Fail (no fallback) | Bad input, would fail on any model |
 
+> **Why DIY failover?** Model failover can also be handled by LLM gateways ([LiteLLM](https://aws.amazon.com/solutions/guidance/multi-provider-generative-ai-gateway-on-aws/), [Portkey](https://portkey.ai/), [Bifrost](https://github.com/maxdotio/bifrost), [Kong AI Gateway](https://konghq.com/products/kong-ai-gateway)) or framework features ([LangChain model fallback middleware](https://docs.langchain.com/oss/python/langchain/middleware/built-in#model-fallback)). This project intentionally implements failover as DIY logic so you can see exactly when and how a model fails over in AWS, understand which error codes warrant retries vs. fast failovers, and capture those events as structured log messages for observability.
+>
+> **LLM gateway tradeoffs with Bedrock:** Gateways add value for multi-provider access and centralized rate limiting, but introduce tradeoffs when used with a single provider like Bedrock: (1) **cross-region inference** — Bedrock's `global.*` model IDs already route to the least-loaded region, and a gateway's own routing may conflict with this; (2) **observability** — a gateway between your app and Bedrock makes end-to-end trace correlation harder, even though CloudTrail/CloudWatch still capture the underlying Bedrock calls; (3) **provider-specific features** — Bedrock Guardrails, provisioned throughput, inference profiles for cost tagging, and Converse API nuances may not pass through cleanly; (4) **added cost and complexity** — the gateway itself needs compute, credentials management, and operational overhead that may not be justified for single-provider use cases.
+
 ### Adjusting Search Results
 
 Modify `max_results` in `langgraph_agent_web_search.py`:
@@ -890,7 +893,7 @@ Running this agent incurs costs from multiple AWS services:
 
 ### Network Security
 
-- Agent runs in a **private subnet** with no public IP (PRIVATE network mode)
+- Agent runs in a **private subnet** with no public IP (VPC network mode)
 - Outbound internet access via **NAT gateway** for Tavily API and Bedrock calls
 - Security group allows all outbound traffic (HTTPS to external APIs) with no inbound rules
 - All AWS API calls use HTTPS
@@ -942,7 +945,7 @@ Since all resources are CDK-managed, `cdk destroy --all` removes everything:
 | Stack | Resources Removed |
 |-------|-------------------|
 | `RuntimeStack` | AgentCore Runtime |
-| `AgentInfraStack` | VPC, NAT gateway, security group, ECR repository, CodeBuild project, IAM execution role, Agent Memory, S3 source assets |
+| `AgentInfraStack` | VPC, NAT gateway, security group, ECR repository, CodeBuild project, IAM execution role, S3 source assets |
 | `SecretsStack` | Secrets Manager secret |
 
 > **Note:** The ECR repository is configured with `empty_on_delete=True` and `removal_policy=DESTROY`, so images are automatically deleted when the stack is destroyed.

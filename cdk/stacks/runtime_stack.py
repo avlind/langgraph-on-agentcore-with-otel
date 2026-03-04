@@ -70,7 +70,7 @@ class RuntimeStack(Stack):
             },
             role_arn=execution_role_arn,
             network_configuration=agentcore.CfnRuntime.NetworkConfigurationProperty(
-                network_mode="PRIVATE",
+                network_mode="VPC",
                 network_mode_config=agentcore.CfnRuntime.VpcConfigProperty(
                     subnets=subnet_ids,
                     security_groups=security_group_ids,

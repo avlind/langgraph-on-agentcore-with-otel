@@ -46,7 +46,7 @@ make logs PROFILE=YourProfileName
 CDK manages all infrastructure:
 ├── SecretsStack           → Secrets Manager (Tavily API key)
 ├── AgentInfraStack        → ECR, CodeBuild, IAM role, VPC, Security Group
-└── RuntimeStack           → AgentCore Runtime (PRIVATE network mode)
+└── RuntimeStack           → AgentCore Runtime (VPC network mode)
 
 User Request → Bedrock AgentCore → VPC (private subnet + NAT) → LangGraph Agent → Claude Haiku (Bedrock)
                                                                                  ↘ Tavily Search API
@@ -64,7 +64,7 @@ The agent is a ReAct-style graph in `langgraph_agent_web_search.py`:
 - **Dependency management**: Uses uv with `pyproject.toml` and `uv.lock`
 - **Infrastructure as Code**: AWS CDK (Python) manages all infrastructure in `cdk/` directory
 - **Secrets handling**: TAVILY_API_KEY stored in AWS Secrets Manager via CDK SecretsStack
-- **Network mode**: PRIVATE with NAT gateway — agent runs in a private subnet with outbound internet via NAT (no public IP)
+- **Network mode**: VPC with NAT gateway — agent runs in a private subnet with outbound internet via NAT (no public IP)
 - **IAM policies**: AgentInfraStack creates execution role with Secrets Manager, Bedrock, ECR, CloudWatch, and ENI permissions
 - **Environment variables**: RuntimeStack passes `AWS_REGION`, `SECRET_NAME`, `MODEL_ID`, `FALLBACK_MODEL_ID` to the container
 - **Deployment scripts**: Python scripts in `scripts/` directory using Typer CLI framework

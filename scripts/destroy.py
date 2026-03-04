@@ -93,7 +93,7 @@ def destroy(
 
     This command runs `cdk destroy --all` to remove:
     - RuntimeStack (AgentCore Runtime)
-    - AgentInfraStack (ECR, CodeBuild, IAM, Memory)
+    - AgentInfraStack (ECR, CodeBuild, IAM, VPC)
     - SecretsStack (Secrets Manager secret)
     """
     start_time = time.time()
